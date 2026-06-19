@@ -67,6 +67,20 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
   }
 
   Future<void> _publishResults() async {
+    // First check: at least one position selected
+    final hasAnyPosition = _positions.values.any((p) => p != null);
+    if (!hasAnyPosition) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select at least one position (Winner/Runner-Up) before publishing!'),
+            backgroundColor: Colors.amber,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _saving = true);
     final profile = ref.read(currentProfileProvider);
     try {
@@ -75,10 +89,12 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
       // Delete existing event points for this event
       await SupabaseConfig.client.from(SupabaseTables.eventPoints).delete().eq('event_id', widget.eventId);
       
-      // Insert new results with upsert
+      int insertedCount = 0;
+      // Insert new results
       for (final reg in _registrations) {
         final position = _positions[reg['id']];
         if (position != null) {
+          debugPrint('Inserting result for reg ${reg['id']}: ${position.label}');
           await SupabaseConfig.client.from(SupabaseTables.results).insert({
             'event_id': widget.eventId,
             'registration_id': reg['id'],
@@ -88,6 +104,7 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
             'published_at': DateTime.now().toIso8601String(),
             'published_by': profile!.id,
           });
+          insertedCount++;
 
           // Insert Sarvottam point
           final student = reg['student_master'] as Map<String, dynamic>?;
@@ -106,6 +123,8 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
         }
       }
 
+      debugPrint('Inserted $insertedCount results');
+
       // Update event status and updated_at
       await SupabaseConfig.client.from(SupabaseTables.events).update({
         'status': EventStatus.resultsPublished.value,
@@ -116,12 +135,18 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
       ref.invalidate(leaderboardProvider);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Results published!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Successfully published $insertedCount results!')),
+        );
         Navigator.pop(context);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('Error publishing: $e');
+      debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error publishing: $e')),
+        );
       }
     } finally {
       setState(() => _saving = false);
