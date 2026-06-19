@@ -10,23 +10,54 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
 
 final completedEventsProvider = StreamProvider<List<Event>>((ref) {
-  print('📊 completedEventsProvider: Starting stream...');
+  print('📊 [DEBUG] completedEventsProvider: Starting stream...');
+  print('📊 [DEBUG] SupabaseTables.events: ${SupabaseTables.events}');
+  
   return SupabaseConfig.client
       .from(SupabaseTables.events)
       .stream(primaryKey: ['id'])
       .order('updated_at', ascending: false)
       .map((data) {
-        print('📊 completedEventsProvider: Received ${data.length} raw events');
-        final events = data
-            .map((e) => Event.fromJson(e))
-            .where((e) {
-              print('📊 Event ${e.id}: status=${e.status.value}, should include? ${[EventStatus.completed, EventStatus.resultsPublished].contains(e.status)}');
-              return [EventStatus.completed, EventStatus.resultsPublished].contains(e.status);
-            })
-            .toList();
-        print('📊 completedEventsProvider: Returning ${events.length} filtered events');
-        return events;
+        print('📊 [DEBUG] Received ${data.length} raw events from stream');
+        for (var e in data) {
+          print('📊 [DEBUG] Raw event: $e');
+          print('📊 [DEBUG] Raw status value: ${e['status']}');
+        }
+        
+        final events = data.map((e) => Event.fromJson(e)).toList();
+        print('📊 [DEBUG] Parsed ${events.length} events');
+        
+        for (var e in events) {
+          print('📊 [DEBUG] Event ${e.id} (${e.name}): status enum is ${e.status.name}, value is ${e.status.value}');
+        }
+        
+        final filteredEvents = events.where((e) {
+          final shouldInclude = [EventStatus.completed, EventStatus.resultsPublished].contains(e.status);
+          print('📊 [DEBUG] Event ${e.id}: include? $shouldInclude');
+          return shouldInclude;
+        }).toList();
+        
+        print('📊 [DEBUG] Returning ${filteredEvents.length} filtered events');
+        return filteredEvents;
       });
+});
+
+final testEventsFutureProvider = FutureProvider<List<Event>>((ref) async {
+  print('🧪 [TEST] Fetching events via Future...');
+  final data = await SupabaseConfig.client
+      .from(SupabaseTables.events)
+      .select();
+  
+  print('🧪 [TEST] Raw future data: $data');
+  
+  final events = (data as List).map((e) => Event.fromJson(e)).toList();
+  
+  print('🧪 [TEST] Parsed ${events.length} events via Future');
+  for (var e in events) {
+    print('🧪 [TEST] Future event: ${e.id}, status: ${e.status.value}');
+  }
+  
+  return events;
 });
 
 final eventResultsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((ref, eventId) {
@@ -62,6 +93,35 @@ class ResultsScreen extends ConsumerStatefulWidget {
   const ResultsScreen({super.key});
   @override
   ConsumerState<ResultsScreen> createState() => _ResultsScreenState();
+}
+
+// Temporary debug widget to show test data
+class _TestDataWidget extends ConsumerWidget {
+  const _TestDataWidget();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final testAsync = ref.watch(testEventsFutureProvider);
+
+    return testAsync.when(
+      data: (events) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '📊 TEST DATA:',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...events.map((e) => Text(
+                '${e.name}: status=${e.status.value}',
+                style: const TextStyle(color: Colors.white),
+              )),
+        ],
+      ),
+      loading: () => const CircularProgressIndicator(),
+      error: (e, s) => Text('❌ Error: $e', style: const TextStyle(color: Colors.red)),
+    );
+  }
 }
 
 class _AnimatedTrophyIcon extends StatefulWidget {
@@ -158,97 +218,103 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
     return Scaffold(
       backgroundColor: LitColors.void_,
       appBar: const LitLifeAppBar(title: 'Results & Standings', showBack: true),
-      body: Stack(
-        children: [
-          eventsAsync.when(
-            data: (events) => events.isEmpty
-                ? const EmptyView(icon: Icons.emoji_events_outlined, title: 'No events with results')
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: events.length,
-                    itemBuilder: (ctx, i) {
-                      final e = events[i];
-                      final isPublished = e.status == EventStatus.resultsPublished;
-                      return ClayCard(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(14),
-                        borderColor: isPublished ? LitColors.moss.withOpacity(0.4) : null,
-                        onTap: () {
-                          if (isPublished) {
-                            _showResultsStandingsSheet(e);
-                          } else {
-                            if (role.canManageResults) {
-                              context.push('/results/score/${e.id}');
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Temporary test widget
+            const _TestDataWidget(),
+            const SizedBox(height: 24),
+            eventsAsync.when(
+              data: (events) => events.isEmpty
+                  ? const EmptyView(icon: Icons.emoji_events_outlined, title: 'No events with results')
+                  : Column(
+                      children: events.asMap().entries.map((entry) {
+                        final e = entry.value;
+                        final isPublished = e.status == EventStatus.resultsPublished;
+                        return ClayCard(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          borderColor: isPublished ? LitColors.moss.withOpacity(0.4) : null,
+                          onTap: () {
+                            if (isPublished) {
+                              _showResultsStandingsSheet(e);
                             } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Results are not published yet for this event.')),
-                              );
+                              if (role.canManageResults) {
+                                context.push('/results/score/${e.id}');
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Results are not published yet for this event.')),
+                                );
+                              }
                             }
-                          }
-                        },
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: LitColors.clay2,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.35),
-                                    offset: const Offset(2, 2),
-                                    blurRadius: 5,
-                                  ),
-                                ],
-                              ),
-                              alignment: Alignment.center,
-                              child: _AnimatedTrophyIcon(isPublished: isPublished),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    e.name,
-                                    style: GoogleFonts.fredoka(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14.5,
-                                      color: LitColors.bone,
+                          },
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: LitColors.clay2,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.35),
+                                      offset: const Offset(2, 2),
+                                      blurRadius: 5,
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${e.category.label} • ${isPublished ? "Results Published" : "Pending Scoring"}',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: isPublished ? LitColors.moss : LitColors.ash,
-                                      fontSize: 11,
-                                      fontWeight: isPublished ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                child: _AnimatedTrophyIcon(isPublished: isPublished),
                               ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right,
-                              color: LitColors.ash,
-                              size: 20,
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      e.name,
+                                      style: GoogleFonts.fredoka(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14.5,
+                                        color: LitColors.bone,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${e.category.label} • ${isPublished ? "Results Published" : "Pending Scoring"}',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        color: isPublished ? LitColors.moss : LitColors.ash,
+                                        fontSize: 11,
+                                        fontWeight: isPublished ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right,
+                                color: LitColors.ash,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ).toList(),
                   ),
-            loading: () => const LoadingView(),
-            error: (e, _) => ErrorView(message: e.toString()),
-          ),
-          if (_loadingStandings)
-            Container(
-              color: Colors.black45,
-              child: const Center(child: CircularProgressIndicator(color: LitColors.ember)),
+              loading: () => const LoadingView(),
+              error: (e, _) => ErrorView(message: e.toString()),
             ),
-        ],
+            if (_loadingStandings)
+              Container(
+                color: Colors.black45,
+                child: const Center(child: CircularProgressIndicator(color: LitColors.ember)),
+              ),
+          ],
+        ),
       ),
     );
   }
