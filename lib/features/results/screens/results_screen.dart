@@ -10,14 +10,23 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
 
 final completedEventsProvider = StreamProvider<List<Event>>((ref) {
+  print('📊 completedEventsProvider: Starting stream...');
   return SupabaseConfig.client
       .from(SupabaseTables.events)
       .stream(primaryKey: ['id'])
       .order('updated_at', ascending: false)
-      .map((data) => data
-          .map((e) => Event.fromJson(e))
-          .where((e) => [EventStatus.completed, EventStatus.resultsPublished].contains(e.status))
-          .toList());
+      .map((data) {
+        print('📊 completedEventsProvider: Received ${data.length} raw events');
+        final events = data
+            .map((e) => Event.fromJson(e))
+            .where((e) {
+              print('📊 Event ${e.id}: status=${e.status.value}, should include? ${[EventStatus.completed, EventStatus.resultsPublished].contains(e.status)}');
+              return [EventStatus.completed, EventStatus.resultsPublished].contains(e.status);
+            })
+            .toList();
+        print('📊 completedEventsProvider: Returning ${events.length} filtered events');
+        return events;
+      });
 });
 
 final eventResultsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((ref, eventId) {
