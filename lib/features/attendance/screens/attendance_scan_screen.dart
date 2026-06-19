@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_config.dart';
@@ -22,11 +23,18 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
   bool _scanEnabled = true;
   int _attendanceCount = 0;
   int _totalRegistrations = 0;
+  bool _hasPermissionGranted = false;
 
   @override
   void initState() {
     super.initState();
     _loadEvents();
+    _requestCameraPermission();
+  }
+
+  Future<void> _requestCameraPermission() async {
+    final status = await Permission.camera.request();
+    setState(() => _hasPermissionGranted = status.isGranted);
   }
 
   Future<void> _loadEvents() async {
@@ -89,6 +97,17 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
     setState(() => _scanEnabled = true);
   }
 
+  String _getErrorMessage(MobileScannerException error) {
+    switch (error.errorCode) {
+      case MobileScannerErrorCode.permissionDenied:
+        return 'Camera permission denied. Please enable it in settings.';
+      case MobileScannerErrorCode.unsupported:
+        return 'Scanning is not supported on this device.';
+      default:
+        return 'An unexpected error occurred: ${error.errorDetails?.message ?? 'Unknown'}';
+    }
+  }
+
   void _showResult(String msg, Color color) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -111,6 +130,10 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: LitColors.bone),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
           'Attendance Scanner',
           style: GoogleFonts.fredoka(fontWeight: FontWeight.w600, fontSize: 16, color: LitColors.bone),
@@ -219,7 +242,7 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
                 height: 320,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: Stack(
+                  child: _hasPermissionGranted ? Stack(
                     alignment: Alignment.center,
                     children: [
                       MobileScanner(
@@ -230,6 +253,37 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
                             setState(() => _scanEnabled = false);
                             _markAttendance(barcode.rawValue!);
                           }
+                        },
+                        errorBuilder: (context, error, child) {
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline, color: Colors.white, size: 40),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Scanner Error',
+                                  style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 4),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                                  child: Text(
+                                    _getErrorMessage(error),
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ClayButton(
+                                  width: 120,
+                                  height: 40,
+                                  onPressed: () => setState(() {}),
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ),
+                          );
                         },
                       ),
                       // Dotted target frame overlay
@@ -257,6 +311,23 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
                         ),
                       ),
                     ],
+                  ) : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.camera_alt_outlined, size: 60, color: LitColors.ash),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Camera Permission Required',
+                          style: GoogleFonts.fredoka(color: LitColors.bone, fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        ClayButton(
+                          onPressed: _requestCameraPermission,
+                          child: const Text('Grant Permission'),
+                        )
+                      ],
+                    ),
                   ),
                 ),
               ),

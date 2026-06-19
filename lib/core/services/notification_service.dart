@@ -20,6 +20,8 @@ class NotificationService {
   RealtimeChannel? _notificationChannel;
 
   Future<void> initialize() async {
+    debugPrint('NotificationService: Initializing...');
+    
     // Android initialization
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -40,16 +42,17 @@ class NotificationService {
     await _localNotifications.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        debugPrint('Notification clicked: ${response.payload}');
+        debugPrint('NotificationService: Notification clicked: ${response.payload}');
       },
     );
 
     // Initialize Firebase Cloud Messaging
     try {
+      debugPrint('NotificationService: Initializing Firebase Messaging...');
       FirebaseMessaging messaging = FirebaseMessaging.instance;
       
       // Request permissions (specifically for iOS/Android 13+)
-      await messaging.requestPermission(
+      NotificationSettings settings = await messaging.requestPermission(
         alert: true,
         announcement: false,
         badge: true,
@@ -58,14 +61,25 @@ class NotificationService {
         provisional: false,
         sound: true,
       );
+      debugPrint('NotificationService: Permission status: ${settings.authorizationStatus}');
+
+      // Get APNs token for iOS
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        String? apnsToken = await messaging.getAPNSToken();
+        debugPrint('NotificationService: APNs token: $apnsToken');
+      }
 
       // Register background handler
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      debugPrint('NotificationService: Background handler registered');
 
       // Listen for foreground FCM messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        debugPrint('Got a FCM message in the foreground: ${message.messageId}');
+        debugPrint('NotificationService: Got FCM message in foreground: ${message.messageId}');
+        debugPrint('NotificationService: Message data: ${message.data}');
         if (message.notification != null) {
+          debugPrint('NotificationService: Notification title: ${message.notification!.title}');
+          debugPrint('NotificationService: Notification body: ${message.notification!.body}');
           _showLocalNotification(
             title: message.notification!.title ?? 'New Notification',
             body: message.notification!.body ?? '',
@@ -76,25 +90,27 @@ class NotificationService {
 
       // Handle notification interaction when app is launched from background or terminated states
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        debugPrint('FCM Notification clicked to open app: ${message.data}');
+        debugPrint('NotificationService: FCM Notification clicked to open app: ${message.data}');
       });
 
       FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
         if (message != null) {
-          debugPrint('App opened from terminated state by FCM: ${message.data}');
+          debugPrint('NotificationService: App opened from terminated state by FCM: ${message.data}');
         }
       });
     } catch (e) {
-      debugPrint('Error initializing Firebase Messaging: $e');
+      debugPrint('NotificationService: Error initializing Firebase Messaging: $e');
     }
 
     // Listen to Supabase auth changes to start/stop listening to notifications
     SupabaseConfig.client.auth.onAuthStateChange.listen((data) {
       final session = data.session;
       if (session != null) {
+        debugPrint('NotificationService: User logged in, starting listening...');
         _startListening(session.user.id);
         _registerFcmToken(session.user.id);
       } else {
+        debugPrint('NotificationService: User logged out, stopping listening...');
         _unregisterFcmToken();
         _stopListening();
       }
@@ -103,12 +119,14 @@ class NotificationService {
     // Start listening immediately if already logged in
     final currentUser = SupabaseConfig.client.auth.currentUser;
     if (currentUser != null) {
+      debugPrint('NotificationService: User already logged in, starting listening...');
       _startListening(currentUser.id);
       _registerFcmToken(currentUser.id);
     }
   }
 
   void _startListening(String userId) {
+    debugPrint('NotificationService: Starting to listen for notifications for user: $userId');
     _stopListening();
 
     _notificationChannel = SupabaseConfig.client
@@ -123,6 +141,7 @@ class NotificationService {
             value: userId,
           ),
           callback: (payload) {
+            debugPrint('NotificationService: Received new notification from Supabase: $payload');
             final newRecord = payload.newRecord;
             _showLocalNotification(
               title: newRecord['title'] ?? 'New Notification',
@@ -136,15 +155,21 @@ class NotificationService {
 
   void _stopListening() {
     if (_notificationChannel != null) {
+      debugPrint('NotificationService: Stopping listening for notifications');
       SupabaseConfig.client.removeChannel(_notificationChannel!);
       _notificationChannel = null;
     }
   }
 
   Future<void> _registerFcmToken(String userId) async {
+    debugPrint('NotificationService: Registering FCM token for user: $userId');
     try {
       String? token = await FirebaseMessaging.instance.getToken();
-      if (token == null) return;
+      debugPrint('NotificationService: FCM token: $token');
+      if (token == null) {
+        debugPrint('NotificationService: FCM token is null, skipping registration');
+        return;
+      }
 
       final deviceType = defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
 
@@ -154,18 +179,21 @@ class NotificationService {
         'device_type': deviceType,
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'fcm_token');
+      debugPrint('NotificationService: FCM token registered successfully');
 
       // Listen for token refreshes
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        debugPrint('NotificationService: FCM token refreshed: $newToken');
         await SupabaseConfig.client.from('user_fcm_tokens').upsert({
           'user_id': userId,
           'fcm_token': newToken,
           'device_type': deviceType,
           'updated_at': DateTime.now().toIso8601String(),
         }, onConflict: 'fcm_token');
+        debugPrint('NotificationService: Refreshed FCM token registered successfully');
       });
     } catch (e) {
-      debugPrint('Error registering FCM token: $e');
+      debugPrint('NotificationService: Error registering FCM token: $e');
     }
   }
 
@@ -188,6 +216,7 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
+    debugPrint('NotificationService: Showing local notification - Title: $title, Body: $body');
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'litops_notifications',
@@ -196,6 +225,7 @@ class NotificationService {
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,
+      icon: '@mipmap/ic_launcher',
     );
 
     const NotificationDetails platformChannelSpecifics =

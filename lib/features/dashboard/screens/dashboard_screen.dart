@@ -132,12 +132,8 @@ class DashboardScreen extends ConsumerWidget {
               _FadeIn(delay: 300, child: _buildSectionTitle(context, 'Quick Services')),
               const SizedBox(height: 8),
               _FadeIn(delay: 400, child: _buildServicesGrid(context, profile, ref)),
-              const SizedBox(height: 8),
               _FadeIn(delay: 500, child: const LiveRankingsWidget()),
               const SizedBox(height: 24),
-              _FadeIn(delay: 600, child: _buildSectionTitle(context, 'Upcoming Highlights')),
-              const SizedBox(height: 12),
-              _FadeIn(delay: 700, child: _buildHighlights(context)),
             ],
           ),
         ),
@@ -367,8 +363,8 @@ class DashboardScreen extends ConsumerWidget {
         Row(
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 40,
+              height: 40,
               decoration: const BoxDecoration(
                 color: LitColors.clay3,
                 shape: BoxShape.circle,
@@ -378,7 +374,7 @@ class DashboardScreen extends ConsumerWidget {
                 initial,
                 style: GoogleFonts.plusJakartaSans(
                   fontWeight: FontWeight.bold,
-                  fontSize: 10.5,
+                  fontSize: 14,
                   color: LitColors.amber,
                 ),
               ),
@@ -390,7 +386,7 @@ class DashboardScreen extends ConsumerWidget {
                 Text(
                   'Namaskara, ${profile?.fullName.split(" ").first ?? "Member"}',
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: LitColors.bone,
                   ),
@@ -715,13 +711,13 @@ class LiveRankingsWidget extends ConsumerWidget {
                 );
               }
 
-              // Take top 5 for the chart
-              final topRankings = rankings.take(5).toList();
-              final maxPoints = topRankings.isNotEmpty ? topRankings.first.totalPoints : 1;
+              // Use ALL rankings
+              final allRankings = rankings;
+              final maxPoints = allRankings.isNotEmpty ? allRankings.first.totalPoints : 1;
 
               return Column(
                 children: [
-                  // Bar Chart Representation
+                  // Bar Chart Representation (still limit to top 8 for readability)
                   SizedBox(
                     height: 160,
                     child: BarChart(
@@ -736,12 +732,12 @@ class LiveRankingsWidget extends ConsumerWidget {
                               showTitles: true,
                               getTitlesWidget: (value, meta) {
                                 final index = value.toInt();
-                                if (index < 0 || index >= topRankings.length) return const SizedBox.shrink();
+                                if (index < 0 || index >= allRankings.take(8).length) return const SizedBox.shrink();
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8.0),
                                   child: Text(
-                                    topRankings[index].branch,
-                                    style: const TextStyle(color: LitColors.ash, fontSize: 9, fontWeight: FontWeight.bold),
+                                    allRankings[index].branch,
+                                    style: const TextStyle(color: LitColors.ash, fontSize: 8, fontWeight: FontWeight.bold),
                                   ),
                                 );
                               },
@@ -754,12 +750,12 @@ class LiveRankingsWidget extends ConsumerWidget {
                         ),
                         gridData: const FlGridData(show: false),
                         borderData: FlBorderData(show: false),
-                        barGroups: List.generate(topRankings.length, (index) {
+                        barGroups: List.generate(allRankings.take(8).length, (index) {
                           return BarChartGroupData(
                             x: index,
                             barRods: [
                               BarChartRodData(
-                                toY: topRankings[index].totalPoints.toDouble(),
+                                toY: allRankings[index].totalPoints.toDouble(),
                                 gradient: LinearGradient(
                                   colors: index == 0 
                                       ? [LitColors.ember, LitColors.amber] 
@@ -767,7 +763,7 @@ class LiveRankingsWidget extends ConsumerWidget {
                                   begin: Alignment.bottomCenter,
                                   end: Alignment.topCenter,
                                 ),
-                                width: 18,
+                                width: 14,
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                               ),
                             ],
@@ -777,16 +773,16 @@ class LiveRankingsWidget extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Detailed List View
-                  ...List.generate(topRankings.length, (index) {
-                    final rank = topRankings[index];
+                  // Detailed List View - ALL departments
+                  ...List.generate(allRankings.length, (index) {
+                    final rank = allRankings[index];
                     final isTop3 = index < 3;
                     final progress = rank.totalPoints / (maxPoints > 0 ? maxPoints : 1);
                     
                     return Container(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
                       decoration: BoxDecoration(
-                        border: index == topRankings.length - 1 
+                        border: index == allRankings.length - 1 
                             ? null 
                             : const Border(bottom: BorderSide(color: Color(0xFF262220))),
                       ),

@@ -10,54 +10,16 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
 
 final completedEventsProvider = StreamProvider<List<Event>>((ref) {
-  print('📊 [DEBUG] completedEventsProvider: Starting stream...');
-  print('📊 [DEBUG] SupabaseTables.events: ${SupabaseTables.events}');
-  
   return SupabaseConfig.client
       .from(SupabaseTables.events)
       .stream(primaryKey: ['id'])
       .order('updated_at', ascending: false)
       .map((data) {
-        print('📊 [DEBUG] Received ${data.length} raw events from stream');
-        for (var e in data) {
-          print('📊 [DEBUG] Raw event: $e');
-          print('📊 [DEBUG] Raw status value: ${e['status']}');
-        }
-        
         final events = data.map((e) => Event.fromJson(e)).toList();
-        print('📊 [DEBUG] Parsed ${events.length} events');
-        
-        for (var e in events) {
-          print('📊 [DEBUG] Event ${e.id} (${e.name}): status enum is ${e.status.name}, value is ${e.status.value}');
-        }
-        
-        final filteredEvents = events.where((e) {
-          final shouldInclude = [EventStatus.completed, EventStatus.resultsPublished].contains(e.status);
-          print('📊 [DEBUG] Event ${e.id}: include? $shouldInclude');
-          return shouldInclude;
+        return events.where((e) {
+          return [EventStatus.completed, EventStatus.resultsPublished].contains(e.status);
         }).toList();
-        
-        print('📊 [DEBUG] Returning ${filteredEvents.length} filtered events');
-        return filteredEvents;
       });
-});
-
-final testEventsFutureProvider = FutureProvider<List<Event>>((ref) async {
-  print('🧪 [TEST] Fetching events via Future...');
-  final data = await SupabaseConfig.client
-      .from(SupabaseTables.events)
-      .select();
-  
-  print('🧪 [TEST] Raw future data: $data');
-  
-  final events = (data as List).map((e) => Event.fromJson(e)).toList();
-  
-  print('🧪 [TEST] Parsed ${events.length} events via Future');
-  for (var e in events) {
-    print('🧪 [TEST] Future event: ${e.id}, status: ${e.status.value}');
-  }
-  
-  return events;
 });
 
 final eventResultsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((ref, eventId) {
@@ -93,35 +55,6 @@ class ResultsScreen extends ConsumerStatefulWidget {
   const ResultsScreen({super.key});
   @override
   ConsumerState<ResultsScreen> createState() => _ResultsScreenState();
-}
-
-// Temporary debug widget to show test data
-class _TestDataWidget extends ConsumerWidget {
-  const _TestDataWidget();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final testAsync = ref.watch(testEventsFutureProvider);
-
-    return testAsync.when(
-      data: (events) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '📊 TEST DATA:',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          ...events.map((e) => Text(
-                '${e.name}: status=${e.status.value}',
-                style: const TextStyle(color: Colors.white),
-              )),
-        ],
-      ),
-      loading: () => const CircularProgressIndicator(),
-      error: (e, s) => Text('❌ Error: $e', style: const TextStyle(color: Colors.red)),
-    );
-  }
 }
 
 class _AnimatedTrophyIcon extends StatefulWidget {
@@ -223,9 +156,6 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Temporary test widget
-            const _TestDataWidget(),
-            const SizedBox(height: 24),
             eventsAsync.when(
               data: (events) => events.isEmpty
                   ? const EmptyView(icon: Icons.emoji_events_outlined, title: 'No events with results')

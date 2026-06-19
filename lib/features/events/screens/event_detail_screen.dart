@@ -14,15 +14,22 @@ import '../../../core/utils/app_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 
 final eventDetailProvider = StreamProvider.family<Event, String>((ref, eventId) async* {
-  final stream = SupabaseConfig.client
-      .from(SupabaseTables.events)
-      .stream(primaryKey: ['id'])
-      .eq('id', eventId);
+  print('📡 [Realtime] eventDetailProvider starting for $eventId');
+  try {
+    final stream = SupabaseConfig.client
+        .from(SupabaseTables.events)
+        .stream(primaryKey: ['id'])
+        .eq('id', eventId);
 
-  await for (final data in stream) {
-    if (data.isNotEmpty) {
-      yield Event.fromJson(data.first);
+    await for (final data in stream) {
+      print('📡 [Realtime] eventDetailProvider received data: $data');
+      if (data.isNotEmpty) {
+        yield Event.fromJson(data.first);
+      }
     }
+  } catch (e) {
+    print('❌ [Realtime] eventDetailProvider error: $e');
+    rethrow;
   }
 });
 
@@ -67,6 +74,10 @@ class EventDetailScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: LitColors.bone),
+          onPressed: () => context.pop(),
+        ),
         title: Text(
           'Event Details',
           style: GoogleFonts.fredoka(fontWeight: FontWeight.w600, fontSize: 16, color: LitColors.bone),

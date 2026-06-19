@@ -12,13 +12,24 @@ import '../../../core/utils/app_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 
 final eventsListProvider = StreamProvider<List<Event>>((ref) async* {
-  final stream = SupabaseConfig.client
-      .from(SupabaseTables.events)
-      .stream(primaryKey: ['id'])
-      .order('created_at', ascending: false);
+  print('📡 [Realtime] eventsListProvider stream starting');
+  
+  try {
+    final stream = SupabaseConfig.client
+        .from(SupabaseTables.events)
+        .stream(primaryKey: ['id'])
+        .order('updated_at', ascending: false);
 
-  await for (final data in stream) {
-    yield data.map((e) => Event.fromJson(e)).toList();
+    await for (final data in stream) {
+      print('📡 [Realtime] eventsListProvider received ${data.length} events');
+      for (var e in data) {
+        print('   - Event: ${e['id']} - ${e['title']} - status: ${e['status']}');
+      }
+      yield data.map((e) => Event.fromJson(e)).toList();
+    }
+  } catch (e) {
+    print('❌ [Realtime] eventsListProvider error: $e');
+    rethrow;
   }
 });
 

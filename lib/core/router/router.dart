@@ -123,9 +123,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             return '/profile-setup';
           }
           return null;
-        } else if (isGoingToSetup) {
-          return '/dashboard';
         }
+        // If profile is complete, still allow going to /profile-setup (for editing)
       }
 
       if (isLogin || isRegister) return '/dashboard';

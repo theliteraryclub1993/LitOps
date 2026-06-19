@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/models/models.dart';
 import '../../../core/widgets/common_widgets.dart';
+import '../../../core/widgets/top_notification.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/theme/theme.dart';
@@ -422,12 +423,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Successfully registered ${student.name} for ${_selectedEvent!.name}!'),
-              backgroundColor: LitColors.moss,
-            ),
-          );
+          showTopNotification(context, 'Successfully registered ${student.name} for ${_selectedEvent!.name}!', type: NotificationType.success);
         }
       } else {
         final teamName = _teamNameController.text.trim();
@@ -507,12 +503,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Successfully registered team "$teamName" for ${_selectedEvent!.name}!'),
-              backgroundColor: LitColors.moss,
-            ),
-          );
+          showTopNotification(context, 'Successfully registered team "$teamName" for ${_selectedEvent!.name}!', type: NotificationType.success);
         }
       }
 
@@ -982,6 +973,37 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                         _searchStudent(barcode.rawValue!);
                       }
                     },
+                    errorBuilder: (context, error, child) {
+                      return Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.white, size: 40),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Scanner Error',
+                              style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: Text(
+                                _getErrorMessage(error),
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ClayButton(
+                              width: 120,
+                              height: 40,
+                              onPressed: () => setState(() {}),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   // Dotted scan frame overlay replicating html design exactly
                   Container(
@@ -1072,6 +1094,17 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         ],
       ],
     );
+  }
+
+  String _getErrorMessage(MobileScannerException error) {
+    switch (error.errorCode) {
+      case MobileScannerErrorCode.permissionDenied:
+        return 'Camera permission denied. Please enable it in settings.';
+      case MobileScannerErrorCode.unsupported:
+        return 'Scanning is not supported on this device.';
+      default:
+        return 'An unexpected error occurred: ${error.errorDetails?.message ?? 'Unknown'}';
+    }
   }
 
   Widget _buildManualFormSection() {

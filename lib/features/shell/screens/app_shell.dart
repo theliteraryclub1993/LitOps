@@ -10,10 +10,41 @@ class AppShell extends ConsumerWidget {
   final Widget child;
   const AppShell({super.key, required this.child});
 
+  // List of EXACT routes that should show the bottom navigation bar
+  static const Set<String> routesWithNavbar = {
+    '/dashboard',
+    '/events',
+    '/leaderboard',
+    '/profile',
+    '/students',
+    '/registration',
+    '/attendance',
+    '/assignments',
+    '/results',
+    '/rounds',
+    '/certificates',
+    '/feedback',
+    '/appeals',
+    '/analytics',
+    '/settings',
+    '/admin',
+  };
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final role = ref.watch(currentUserRoleProvider);
     final isSuperAdmin = role.isSuperAdmin;
+    final currentLocation = GoRouterState.of(context).matchedLocation;
+    final isDashboard = currentLocation == '/dashboard';
+    
+    // Only show navbar if current location is EXACTLY one of the top-level routes
+    final bool shouldShowNavbar = routesWithNavbar.contains(currentLocation);
+    
+    print("=== AppShell Debug ===");
+    print("currentLocation = '$currentLocation'");
+    print("shouldShowNavbar = $shouldShowNavbar");
+    print("routesWithNavbar = $routesWithNavbar");
+    print("=== End AppShell Debug ===");
 
     final navItems = [
       NavBarItem(
@@ -51,9 +82,8 @@ class AppShell extends ConsumerWidget {
     ];
 
     int calculateSelectedIndex() {
-      final location = GoRouterState.of(context).matchedLocation;
       for (int i = 0; i < navItems.length; i++) {
-        if (location.startsWith(navItems[i].route)) {
+        if (currentLocation.startsWith(navItems[i].route)) {
           return i;
         }
       }
@@ -70,57 +100,62 @@ class AppShell extends ConsumerWidget {
       body: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: 100), // Height of bar + margin
+            padding: EdgeInsets.only(
+              bottom: shouldShowNavbar ? 100 : 0, // Only add padding if navbar is shown
+            ),
             child: child,
           ),
-          Positioned(
-            right: 24,
-            bottom: 130,
-            child: GestureDetector(
-              onTap: () => context.push('/registration'),
-              child: Container(
-                height: 56,
-                width: 56,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [LitColors.ember, LitColors.emberDark],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
+          if (isDashboard && shouldShowNavbar)
+            Positioned(
+              right: 24,
+              bottom: 130,
+              child: GestureDetector(
+                onTap: () => context.push('/registration'),
+                child: Container(
+                  height: 56,
+                  width: 56,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [LitColors.ember, LitColors.emberDark],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    BoxShadow(
-                      color: LitColors.ember.withOpacity(0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 4),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                      BoxShadow(
+                        color: LitColors.ember.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                      width: 1,
                     ),
-                  ],
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
-                    width: 1,
                   ),
-                ),
-                child: const Icon(
-                  Icons.qr_code_scanner_rounded,
-                  color: Color(0xFF1A0D05),
-                  size: 26,
+                  child: const Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: Color(0xFF1A0D05),
+                    size: 26,
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
-      extendBody: true,
-      bottomNavigationBar: ClayBottomNavBar(
-        selectedIndex: calculateSelectedIndex(),
-        items: navItems,
-        onDestinationSelected: onItemTapped,
-      ),
+      extendBody: shouldShowNavbar,
+      bottomNavigationBar: shouldShowNavbar
+          ? ClayBottomNavBar(
+              selectedIndex: calculateSelectedIndex(),
+              items: navItems,
+              onDestinationSelected: onItemTapped,
+            )
+          : null,
     );
   }
 }

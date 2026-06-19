@@ -60,7 +60,9 @@ Deno.serve(async (req) => {
           android: {
             priority: 'high',
             notification: {
-              sound: 'default'
+              sound: 'default',
+              icon: 'ic_launcher',
+              color: '#FF6A2C' // your ember color!
             }
           },
           apns: {

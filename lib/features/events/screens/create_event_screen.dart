@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
+import '../../../core/theme/theme.dart';
+import '../../../core/widgets/common_widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'event_detail_screen.dart';
 
@@ -169,120 +172,560 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
   Widget build(BuildContext context) {
     final isEdit = widget.eventToEdit != null || widget.eventId != null;
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: LitColors.void_,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: Text(isEdit ? 'Edit Event' : 'Create Event', style: const TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: LitColors.bone),
+          onPressed: () => context.pop(),
+        ),
+        title: Text(
+          isEdit ? 'Edit Event' : 'Create Event',
+          style: GoogleFonts.fredoka(color: LitColors.bone, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         actions: [
           TextButton(
             onPressed: _isLoadingEvent ? null : _saveEvent,
             child: Text(
               isEdit ? 'Update' : 'Save',
-              style: const TextStyle(color: Color(0xFFFF6A2C), fontWeight: FontWeight.bold),
+              style: GoogleFonts.plusJakartaSans(
+                color: LitColors.ember,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
       ),
       body: _isLoadingEvent
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView()
           : Form(
               key: _formKey,
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(labelText: 'Event Name *'),
-                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<EventCategory>(
-                    initialValue: _category,
-                    decoration: const InputDecoration(labelText: 'Category'),
-                    items: EventCategory.values.map((c) => DropdownMenuItem(value: c, child: Text(c.label))).toList(),
-                    onChanged: (v) => setState(() => _category = v!),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<EventStatus>(
-                    initialValue: _status,
-                    decoration: const InputDecoration(labelText: 'Status'),
-                    items: EventStatus.values.map((s) => DropdownMenuItem(value: s, child: Text(s.label))).toList(),
-                    onChanged: (v) => setState(() => _status = v!),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(controller: _descController, decoration: const InputDecoration(labelText: 'Description'), maxLines: 3),
-                  const SizedBox(height: 16),
-                  TextFormField(controller: _rulesController, decoration: const InputDecoration(labelText: 'Rules'), maxLines: 4),
-                  const SizedBox(height: 16),
-                  TextFormField(controller: _venueController, decoration: const InputDecoration(labelText: 'Venue')),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Event Date'),
-                    subtitle: Text(_eventDate != null ? '${_eventDate!.day}/${_eventDate!.month}/${_eventDate!.year}' : 'Not set'),
-                    trailing: const Icon(Icons.calendar_today),
-                    onTap: () async {
-                      final date = await showDatePicker(context: context, initialDate: _eventDate ?? DateTime.now(), firstDate: DateTime(2024), lastDate: DateTime(2030));
-                      if (date != null) setState(() => _eventDate = date);
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Event Time'),
-                    subtitle: Text(_eventTime != null ? '${_eventTime!.hour}:${_eventTime!.minute.toString().padLeft(2, '0')}' : 'Not set'),
-                    trailing: const Icon(Icons.access_time),
-                    onTap: () async {
-                      final time = await showTimePicker(context: context, initialTime: _eventTime ?? TimeOfDay.now());
-                      if (time != null) setState(() => _eventTime = time);
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Registration Deadline'),
-                    subtitle: Text(_deadline != null ? '${_deadline!.day}/${_deadline!.month}/${_deadline!.year}' : 'Not set'),
-                    trailing: const Icon(Icons.timer),
-                    onTap: () async {
-                      final date = await showDatePicker(context: context, initialDate: _deadline ?? DateTime.now(), firstDate: DateTime(2024), lastDate: DateTime(2030));
-                      if (date != null) setState(() => _deadline = date);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _capacityController,
-                          decoration: const InputDecoration(labelText: 'Capacity'),
-                          keyboardType: TextInputType.number,
+                  // Event Name
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Event Name *',
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _teamSizeController,
-                          decoration: const InputDecoration(labelText: 'Team Size'),
-                          keyboardType: TextInputType.number,
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _nameController,
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                          decoration: InputDecoration(
+                            hintText: 'Enter event name',
+                            hintStyle: GoogleFonts.plusJakartaSans(color: LitColors.ash.withValues(alpha: 0.5)),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: LitColors.clay2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.ember),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            errorBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.coral),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedErrorBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.coral),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: LitColors.clay,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                          validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Team Event'),
-                    value: _isTeamEvent,
-                    onChanged: (v) => setState(() => _isTeamEvent = v),
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _saveEvent,
-                      child: Text(isEdit ? 'Update Event' : 'Create Event'),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+
+                  // Category
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Category',
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<EventCategory>(
+                          value: _category,
+                          dropdownColor: LitColors.clay,
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                          decoration: InputDecoration(
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: LitColors.clay2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.ember),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: LitColors.clay,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                          items: EventCategory.values.map((c) {
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text(c.label, style: GoogleFonts.plusJakartaSans()),
+                            );
+                          }).toList(),
+                          onChanged: (v) => setState(() => _category = v!),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Status
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Status',
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<EventStatus>(
+                          value: _status,
+                          dropdownColor: LitColors.clay,
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                          decoration: InputDecoration(
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: LitColors.clay2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.ember),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: LitColors.clay,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                          items: EventStatus.values.map((s) {
+                            return DropdownMenuItem(
+                              value: s,
+                              child: Text(s.label, style: GoogleFonts.plusJakartaSans()),
+                            );
+                          }).toList(),
+                          onChanged: (v) => setState(() => _status = v!),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Description
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Description',
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _descController,
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                          maxLines: 3,
+                          decoration: InputDecoration(
+                            hintText: 'Enter event description',
+                            hintStyle: GoogleFonts.plusJakartaSans(color: LitColors.ash.withValues(alpha: 0.5)),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: LitColors.clay2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.ember),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: LitColors.clay,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Rules
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Rules',
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _rulesController,
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                            hintText: 'Enter event rules',
+                            hintStyle: GoogleFonts.plusJakartaSans(color: LitColors.ash.withValues(alpha: 0.5)),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: LitColors.clay2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.ember),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: LitColors.clay,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Venue
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Venue',
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _venueController,
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                          decoration: InputDecoration(
+                            hintText: 'Enter venue',
+                            hintStyle: GoogleFonts.plusJakartaSans(color: LitColors.ash.withValues(alpha: 0.5)),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: LitColors.clay2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: const BorderSide(color: LitColors.ember),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            filled: true,
+                            fillColor: LitColors.clay,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Event Date, Time, Deadline
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      children: [
+                        // Event Date
+                        GestureDetector(
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: _eventDate ?? DateTime.now(),
+                              firstDate: DateTime(2024),
+                              lastDate: DateTime(2030),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme: const ColorScheme.dark(
+                                      primary: LitColors.ember,
+                                      onPrimary: Colors.white,
+                                      surface: LitColors.clay,
+                                      onSurface: LitColors.bone,
+                                    ),
+                                    dialogBackgroundColor: LitColors.void_,
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+                            if (date != null) setState(() => _eventDate = date);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: LitColors.clay,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: LitColors.clay2),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_today, color: LitColors.ash, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Event Date',
+                                        style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _eventDate != null ? '${_eventDate!.day}/${_eventDate!.month}/${_eventDate!.year}' : 'Not set',
+                                        style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 14),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Event Time
+                        GestureDetector(
+                          onTap: () async {
+                            final time = await showTimePicker(
+                              context: context,
+                              initialTime: _eventTime ?? TimeOfDay.now(),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme: const ColorScheme.dark(
+                                      primary: LitColors.ember,
+                                      onPrimary: Colors.white,
+                                      surface: LitColors.clay,
+                                      onSurface: LitColors.bone,
+                                    ),
+                                    dialogBackgroundColor: LitColors.void_,
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+                            if (time != null) setState(() => _eventTime = time);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: LitColors.clay,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: LitColors.clay2),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.access_time, color: LitColors.ash, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Event Time',
+                                        style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _eventTime != null ? '${_eventTime!.hour.toString().padLeft(2, '0')}:${_eventTime!.minute.toString().padLeft(2, '0')}' : 'Not set',
+                                        style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 14),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Registration Deadline
+                        GestureDetector(
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: _deadline ?? DateTime.now(),
+                              firstDate: DateTime(2024),
+                              lastDate: DateTime(2030),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme: const ColorScheme.dark(
+                                      primary: LitColors.ember,
+                                      onPrimary: Colors.white,
+                                      surface: LitColors.clay,
+                                      onSurface: LitColors.bone,
+                                    ),
+                                    dialogBackgroundColor: LitColors.void_,
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+                            if (date != null) setState(() => _deadline = date);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: LitColors.clay,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: LitColors.clay2),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.timer, color: LitColors.ash, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Registration Deadline',
+                                        style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _deadline != null ? '${_deadline!.day}/${_deadline!.month}/${_deadline!.year}' : 'Not set',
+                                        style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 14),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Capacity and Team Size
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Capacity',
+                                style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _capacityController,
+                                keyboardType: TextInputType.number,
+                                style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                                decoration: InputDecoration(
+                                  hintText: 'Max participants',
+                                  hintStyle: GoogleFonts.plusJakartaSans(color: LitColors.ash.withValues(alpha: 0.5)),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(color: LitColors.clay2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderSide: const BorderSide(color: LitColors.ember),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  filled: true,
+                                  fillColor: LitColors.clay,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Team Size',
+                                style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _teamSizeController,
+                                keyboardType: TextInputType.number,
+                                style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
+                                decoration: InputDecoration(
+                                  hintText: 'Per team',
+                                  hintStyle: GoogleFonts.plusJakartaSans(color: LitColors.ash.withValues(alpha: 0.5)),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(color: LitColors.clay2),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderSide: const BorderSide(color: LitColors.ember),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  filled: true,
+                                  fillColor: LitColors.clay,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Team Event Switch
+                  ClayCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Team Event',
+                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontWeight: FontWeight.w600, fontSize: 14),
+                        ),
+                        Switch(
+                          value: _isTeamEvent,
+                          activeColor: LitColors.ember,
+                          inactiveThumbColor: LitColors.ash,
+                          inactiveTrackColor: LitColors.clay2,
+                          onChanged: (v) => setState(() => _isTeamEvent = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Save Button
+                  ClayButton(
+                    onPressed: _saveEvent,
+                    height: 52,
+                    child: Text(
+                      isEdit ? 'Update Event' : 'Create Event',
+                      style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),

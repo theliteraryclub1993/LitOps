@@ -8,7 +8,19 @@ import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
 
+// Stream triggers for realtime updates
+final _attendanceRegistrationsStream = StreamProvider.family((ref, String eventId) => 
+  SupabaseConfig.client.from(SupabaseTables.registrations).stream(primaryKey: ['id']).eq('event_id', eventId)
+);
+final _attendanceStream = StreamProvider.family((ref, String eventId) => 
+  SupabaseConfig.client.from(SupabaseTables.attendance).stream(primaryKey: ['id']).eq('event_id', eventId)
+);
+
 final eventAttendanceProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, eventId) async {
+  // Watch the streams to trigger re-fetch
+  ref.watch(_attendanceRegistrationsStream(eventId));
+  ref.watch(_attendanceStream(eventId));
+  
   final regs = await SupabaseConfig.client.from(SupabaseTables.registrations).select('id,student_id,student_master(name,usn,branch)').eq('event_id', eventId).eq('is_cancelled', false);
   final att = await SupabaseConfig.client.from(SupabaseTables.attendance).select('registration_id').eq('event_id', eventId);
   final attIds = (att as List).map((a) => a['registration_id']).toSet();

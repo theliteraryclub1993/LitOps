@@ -33,6 +33,10 @@ class _PointsManagementScreenState extends ConsumerState<PointsManagementScreen>
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text('Sarvottam Point Governance'),
         backgroundColor: const Color(0xFF0A0A0A),
         foregroundColor: const Color(0xFFF3ECE2),
@@ -373,8 +377,6 @@ class _AllocatePointsSheetState extends ConsumerState<_AllocatePointsSheet> {
   // Input fields
   Event? _selectedEvent;
   String? _selectedBranch;
-  Student? _selectedStudent;
-  Team? _selectedTeam;
   ResultPosition? _selectedPosition;
   final _pointsCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
@@ -608,6 +610,8 @@ class _AllocatePointsSheetState extends ConsumerState<_AllocatePointsSheet> {
                           await ref.read(adminControllerProvider).allocateEventPoints(
                                 eventId: _selectedEvent!.id,
                                 branch: _selectedBranch!,
+                                studentId: null, // No individual student
+                                teamId: null, // No team, only branch
                                 points: int.parse(_pointsCtrl.text),
                                 reason: _reasonCtrl.text.trim(),
                                 position: _selectedPosition,

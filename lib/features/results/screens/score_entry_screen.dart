@@ -18,7 +18,6 @@ class ScoreEntryScreen extends ConsumerStatefulWidget {
 class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
   Event? _event;
   List<Map<String, dynamic>> _registrations = [];
-  final Map<String, String> _scoreCtrls = {};
   final Map<String, ResultPosition?> _positions = {};
   bool _loading = false;
   bool _saving = false;
@@ -50,7 +49,6 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
       setState(() {
         _registrations = List<Map<String, dynamic>>.from(regData as List);
         for (final reg in _registrations) {
-          _scoreCtrls[reg['id']] = '';
           _positions[reg['id']] = null;
         }
       });
@@ -100,19 +98,30 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
             'registration_id': reg['id'],
             'team_id': reg['team_id'],
             'position': position.value,
-            'score': double.tryParse(_scoreCtrls[reg['id']] ?? ''),
+            'score': null,
             'published_at': DateTime.now().toIso8601String(),
             'published_by': profile!.id,
           });
           insertedCount++;
 
-          // Insert Sarvottam point
+          // Insert Sarvottam point (only per branch/registration, no student tracking)
           final student = reg['student_master'] as Map<String, dynamic>?;
+          final team = reg['teams'] as Map<String, dynamic>?;
+          
+          String? branch;
           if (student != null) {
+            branch = student['branch'] as String?;
+          }
+          
+          if (branch == null && team != null) {
+            // For team events, get branch from one of team members if needed, but for now assume student master exists for at least one
+          }
+          
+          if (branch != null) {
             await SupabaseConfig.client.from(SupabaseTables.eventPoints).insert({
               'event_id': widget.eventId,
-              'branch': student['branch'] as String? ?? 'Unknown',
-              'student_id': student['id'],
+              'branch': branch,
+              'student_id': null, // No individual student tracking
               'team_id': reg['team_id'],
               'points': position.points,
               'reason': 'Event result - ${position.label}',
@@ -163,6 +172,10 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Color(0xFFF3ECE2)),
+            onPressed: () => Navigator.pop(context),
+          ),
           title: const Text('Access Denied', style: TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold)),
         ),
         body: const Center(
@@ -181,8 +194,12 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFFF3ECE2)),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
-          _event?.name ?? 'Score Entry',
+          _event?.name ?? 'Result Entry',
           style: const TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -209,6 +226,13 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                         : student != null
                             ? student['name'] as String?
                             : 'Unknown';
+                    
+                    // Get branch for display
+                    String? branch;
+                    if (student != null) {
+                      branch = student['branch'] as String?;
+                    }
+                    
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       color: const Color(0xFF1D1A18),
@@ -234,56 +258,35 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                                 student['usn'],
                                 style: const TextStyle(color: Color(0xFF8C857C), fontSize: 11),
                               ),
+                            if (branch != null)
+                              Text(
+                                'Branch: $branch',
+                                style: const TextStyle(color: Color(0xFF8C857C), fontSize: 11),
+                              ),
                             const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    style: const TextStyle(color: Color(0xFFF3ECE2)),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Score',
-                                      labelStyle: TextStyle(color: Color(0xFF8C857C)),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(color: Color(0xFF262220)),
-                                        borderRadius: BorderRadius.all(Radius.circular(8)),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(color: Color(0xFFFF6A2C)),
-                                        borderRadius: BorderRadius.all(Radius.circular(8)),
-                                      ),
-                                    ),
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                    onChanged: (v) => _scoreCtrls[reg['id']] = v,
-                                  ),
+                            DropdownButtonFormField<ResultPosition>(
+                              value: _positions[reg['id']],
+                              style: const TextStyle(color: Color(0xFFF3ECE2)),
+                              dropdownColor: const Color(0xFF1D1A18),
+                              decoration: InputDecoration(
+                                labelText: 'Position (${_positions[reg['id']]?.points ?? 0} pts)',
+                                labelStyle: const TextStyle(color: Color(0xFF8C857C)),
+                                enabledBorder: const OutlineInputBorder(
+                                  borderSide: BorderSide(color: Color(0xFF262220)),
+                                  borderRadius: BorderRadius.all(Radius.circular(8)),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: DropdownButtonFormField<ResultPosition>(
-                                    value: _positions[reg['id']],
-                                    style: const TextStyle(color: Color(0xFFF3ECE2)),
-                                    dropdownColor: const Color(0xFF1D1A18),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Position',
-                                      labelStyle: TextStyle(color: Color(0xFF8C857C)),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(color: Color(0xFF262220)),
-                                        borderRadius: BorderRadius.all(Radius.circular(8)),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(color: Color(0xFFFF6A2C)),
-                                        borderRadius: BorderRadius.all(Radius.circular(8)),
-                                      ),
-                                    ),
-                                    items: ResultPosition.values.map((p) {
-                                      return DropdownMenuItem(
-                                        value: p,
-                                        child: Text(p.label),
-                                      );
-                                    }).toList(),
-                                    onChanged: (v) => setState(() => _positions[reg['id']] = v),
-                                  ),
+                                focusedBorder: const OutlineInputBorder(
+                                  borderSide: BorderSide(color: Color(0xFFFF6A2C)),
+                                  borderRadius: BorderRadius.all(Radius.circular(8)),
                                 ),
-                              ],
+                              ),
+                              items: ResultPosition.values.map((p) {
+                                return DropdownMenuItem(
+                                  value: p,
+                                  child: Text('${p.label} (+${p.points} pts)'),
+                                );
+                              }).toList(),
+                              onChanged: (v) => setState(() => _positions[reg['id']] = v),
                             ),
                           ],
                         ),

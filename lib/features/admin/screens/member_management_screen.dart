@@ -4,7 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/models/models.dart';
 import '../../../core/widgets/common_widgets.dart';
+import '../../../core/widgets/top_notification.dart';
 import '../providers/admin_providers.dart';
+import '../../auth/providers/auth_provider.dart';
 
 class MemberManagementScreen extends ConsumerStatefulWidget {
   const MemberManagementScreen({super.key});
@@ -214,45 +216,60 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
               icon: const Icon(Icons.more_vert, color: Color(0xFF8C857C)),
               color: const Color(0xFF1D1A18),
               onSelected: (action) => _handleMenuAction(action, member),
-              itemBuilder: (context) => [
-               const PopupMenuItem(
-                  value: 'change_role',
-                  child: Row(
-                    children: [
-                      Icon(Icons.manage_accounts_rounded, color: Color(0xFFFFB14D), size: 20),
-                      SizedBox(width: 8),
-                      Text('Change Role', style: TextStyle(color: Color(0xFFF3ECE2))),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: isSuspended ? 'activate' : 'suspend',
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSuspended ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                        color: isSuspended ? const Color(0xFF6FAE8F) : const Color(0xFFFFB14D),
-                        size: 20,
+              itemBuilder: (context) {
+                final currentUserRole = ref.read(currentUserRoleProvider);
+                final isSuperAdmin = currentUserRole.isSuperAdmin;
+                return [
+                  if (isSuperAdmin)
+                    const PopupMenuItem(
+                      value: 'edit_details',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_rounded, color: Color(0xFF6FAE8F), size: 20),
+                          SizedBox(width: 8),
+                          Text('Edit Details', style: TextStyle(color: Color(0xFFF3ECE2))),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        isSuspended ? 'Reactivate' : 'Suspend Member',
-                        style: const TextStyle(color: Color(0xFFF3ECE2)),
-                      ),
-                    ],
+                    ),
+                  const PopupMenuItem(
+                    value: 'change_role',
+                    child: Row(
+                      children: [
+                        Icon(Icons.manage_accounts_rounded, color: Color(0xFFFFB14D), size: 20),
+                        SizedBox(width: 8),
+                        Text('Change Role', style: TextStyle(color: Color(0xFFF3ECE2))),
+                      ],
+                    ),
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'remove',
-                  child: Row(
-                    children: [
-                      Icon(Icons.person_remove_rounded, color: Color(0xFFFF5C5C), size: 20),
-                      SizedBox(width: 8),
-                      Text('Remove Member', style: TextStyle(color: Color(0xFFF3ECE2))),
-                    ],
+                  PopupMenuItem(
+                    value: isSuspended ? 'activate' : 'suspend',
+                    child: Row(
+                      children: [
+                        Icon(
+                          isSuspended ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                          color: isSuspended ? const Color(0xFF6FAE8F) : const Color(0xFFFFB14D),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          isSuspended ? 'Reactivate' : 'Suspend Member',
+                          style: const TextStyle(color: Color(0xFFF3ECE2)),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  const PopupMenuItem(
+                    value: 'remove',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_remove_rounded, color: Color(0xFFFF5C5C), size: 20),
+                        SizedBox(width: 8),
+                        Text('Remove Member', style: TextStyle(color: Color(0xFFF3ECE2))),
+                      ],
+                    ),
+                  ),
+                ];
+              },
             ),
           ],
         ),
@@ -262,6 +279,9 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
 
   void _handleMenuAction(String action, ClubMember member) {
     switch (action) {
+      case 'edit_details':
+        _showEditMemberDetailsDialog(member);
+        break;
       case 'change_role':
         _showChangeRoleDialog(member);
         break;
@@ -276,8 +296,89 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
     }
   }
 
+  void _showEditMemberDetailsDialog(ClubMember member) {
+    final nameCtrl = TextEditingController(text: member.memberName ?? '');
+    final emailCtrl = TextEditingController(text: member.memberEmail ?? '');
+    final phoneCtrl = TextEditingController(text: member.memberPhone ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1D1A18),
+          title: Text(
+            'Edit Member Details',
+            style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                style: const TextStyle(color: Color(0xFFF3ECE2)),
+                decoration: const InputDecoration(
+                  hintText: 'Full Name',
+                  labelText: 'Name',
+                  labelStyle: TextStyle(color: Color(0xFF8C857C)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: emailCtrl,
+                style: const TextStyle(color: Color(0xFFF3ECE2)),
+                decoration: const InputDecoration(
+                  hintText: 'email@example.com',
+                  labelText: 'Email',
+                  labelStyle: TextStyle(color: Color(0xFF8C857C)),
+                ),
+                keyboardType: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneCtrl,
+                style: const TextStyle(color: Color(0xFFF3ECE2)),
+                decoration: const InputDecoration(
+                  hintText: '+1234567890',
+                  labelText: 'Phone',
+                  labelStyle: TextStyle(color: Color(0xFF8C857C)),
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Color(0xFF8C857C))),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                try {
+                  await ref.read(adminControllerProvider).updateMemberDetails(
+                    userId: member.userId,
+                    memberName: nameCtrl.text.trim(),
+                    memberEmail: emailCtrl.text.trim(),
+                    memberPhone: phoneCtrl.text.trim(),
+                  );
+                  showTopNotification(context, 'Member details updated successfully', type: NotificationType.success);
+                } catch (e) {
+                  showTopNotification(context, 'Failed to update details: $e', type: NotificationType.error);
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showChangeRoleDialog(ClubMember member) {
-    UserRole selectedRole = member.role == UserRole.superAdmin ? UserRole.juniorWing : member.role;
+    UserRole selectedRole = member.role;
+    final currentUserRole = ref.read(currentUserRoleProvider);
+    final isSuperAdmin = currentUserRole.isSuperAdmin;
+    
     showDialog(
       context: context,
       builder: (context) {
@@ -318,24 +419,33 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
                           }
                         },
                         items: () {
-                          final memberYear = member.memberYear;
-                          List<UserRole> availableRoles;
-                          if (memberYear == 1) {
-                            availableRoles = [UserRole.juniorWing];
-                          } else if (memberYear == 2) {
-                            availableRoles = [UserRole.assistantCoordinator];
+                          if (isSuperAdmin) {
+                            // Super admin can choose ANY role
+                            return UserRole.values.map((r) => DropdownMenuItem<String>(
+                              key: ValueKey(r.value),
+                              value: r.value,
+                              child: Text(r.label, style: const TextStyle(color: Color(0xFFF3ECE2))),
+                            )).toList();
                           } else {
-                            // 3rd, 4th year, or year unknown — show all non-super roles
-                            availableRoles = UserRole.values.where((r) =>
-                              r != UserRole.superAdmin &&
-                              r != UserRole.juniorWing &&
-                              r != UserRole.assistantCoordinator).toList();
+                            // Regular admin logic
+                            final memberYear = member.memberYear;
+                            List<UserRole> availableRoles;
+                            if (memberYear == 1) {
+                              availableRoles = [UserRole.juniorWing];
+                            } else if (memberYear == 2) {
+                              availableRoles = [UserRole.assistantCoordinator];
+                            } else {
+                              availableRoles = UserRole.values.where((r) =>
+                                r != UserRole.superAdmin &&
+                                r != UserRole.juniorWing &&
+                                r != UserRole.assistantCoordinator).toList();
+                            }
+                            return availableRoles.map((r) => DropdownMenuItem<String>(
+                              key: ValueKey(r.value),
+                              value: r.value,
+                              child: Text(r.label, style: const TextStyle(color: Color(0xFFF3ECE2))),
+                            )).toList();
                           }
-                          return availableRoles.map((r) => DropdownMenuItem<String>(
-                                key: ValueKey(r.value),
-                                  value: r.value,
-                                  child: Text(r.label, style: const TextStyle(color: Color(0xFFF3ECE2))),
-                                )).toList();
                         }(),
                       ),
                     ),
@@ -358,13 +468,9 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
                         member.userId,
                         selectedRole,
                       );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Member role updated successfully')),
-                  );
+                  showTopNotification(context, 'Member role updated successfully', type: NotificationType.success);
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to update role: $e')),
-                  );
+                  showTopNotification(context, 'Failed to update role: $e', type: NotificationType.error);
                 }
               },
               child: const Text('Save'),
@@ -421,13 +527,9 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
                         MemberStatus.suspended,
                         reason: reason,
                       );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Member suspended successfully')),
-                  );
+                  showTopNotification(context, 'Member suspended successfully', type: NotificationType.warning);
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to suspend member: $e')),
-                  );
+                  showTopNotification(context, 'Failed to suspend member: $e', type: NotificationType.error);
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -456,13 +558,9 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
                 member.userId,
                 MemberStatus.active,
               );
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Member reactivated successfully')),
-          );
+          showTopNotification(context, 'Member reactivated successfully', type: NotificationType.success);
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to reactivate: $e')),
-          );
+          showTopNotification(context, 'Failed to reactivate: $e', type: NotificationType.error);
         }
       },
     );
@@ -479,13 +577,9 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
       onConfirm: () async {
         try {
           await ref.read(adminControllerProvider).removeMember(member.id, member.userId);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Member removed successfully')),
-          );
+          showTopNotification(context, 'Member removed successfully', type: NotificationType.success);
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to remove member: $e')),
-          );
+          showTopNotification(context, 'Failed to remove member: $e', type: NotificationType.error);
         }
       },
     );

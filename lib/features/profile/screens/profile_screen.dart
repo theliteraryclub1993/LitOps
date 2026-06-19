@@ -348,14 +348,6 @@ class ProfileScreen extends ConsumerWidget {
                   _buildDivider(),
                   _buildActionTile(
                     context: context,
-                    icon: Icons.qr_code_scanner_rounded,
-                    title: 'Verify Certificate',
-                    subtitle: 'Scan QR to check validity',
-                    onTap: () => context.push('/verify/'),
-                  ),
-                  _buildDivider(),
-                  _buildActionTile(
-                    context: context,
                     icon: Icons.info_outline_rounded,
                     title: 'About Lit Life',
                     subtitle: 'Version 1.0.0 (Stable Build)',
