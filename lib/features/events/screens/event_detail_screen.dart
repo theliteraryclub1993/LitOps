@@ -210,7 +210,58 @@ class EventDetailScreen extends ConsumerWidget {
                         children: [
                           CategoryChip(category: event.category.value),
                           const SizedBox(width: 8),
-                          StatusChip(label: event.status.label),
+                          if (role.canManageEvents || profile?.year == 4)
+                            Flexible(
+                              child: GestureDetector(
+                                onTap: () async {
+                                  final newStatus = await showModalBottomSheet<EventStatus>(
+                                    context: context,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (ctx) => ClayCard(
+                                      color: LitColors.clay,
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Change Status',
+                                            style: GoogleFonts.fredoka(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                              color: LitColors.bone,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          ...EventStatus.values.map((status) {
+                                            return ListTile(
+                                              title: Text(status.label),
+                                              leading: event.status == status
+                                                  ? const Icon(Icons.check_circle, color: LitColors.moss)
+                                                  : null,
+                                              onTap: () {
+                                                Navigator.pop(ctx, status);
+                                              },
+                                            );
+                                          }),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                  if (newStatus != null) {
+                                    await SupabaseConfig.client
+                                        .from(SupabaseTables.events)
+                                        .update({
+                                          'status': newStatus.value,
+                                          'updated_at': DateTime.now().toIso8601String()
+                                        })
+                                        .eq('id', eventId);
+                                  }
+                                },
+                                child: StatusChip(label: event.status.label),
+                              ),
+                            )
+                          else
+                            StatusChip(label: event.status.label),
                         ],
                       ),
                       const SizedBox(height: 12),
