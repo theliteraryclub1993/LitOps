@@ -79,6 +79,40 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
             return matchesSearch && matchesCategory;
           }).toList();
 
+          // Apply Sorting Logic
+          filteredEvents.sort((a, b) {
+            // 1. Status Priority (Top/Active -> Future -> Bottom/Closed)
+            int getStatusPriority(EventStatus status) {
+              switch (status) {
+                case EventStatus.ongoing:
+                case EventStatus.registrationOpen:
+                  return 0;
+                case EventStatus.upcoming:
+                  return 1;
+                case EventStatus.draft:
+                  return 2;
+                case EventStatus.registrationClosed:
+                case EventStatus.completed:
+                case EventStatus.resultsPublished:
+                case EventStatus.archived:
+                  return 3;
+              }
+            }
+
+            final pA = getStatusPriority(a.status);
+            final pB = getStatusPriority(b.status);
+            
+            if (pA != pB) return pA.compareTo(pB);
+
+            // 2. Category Priority (Balwaan -> Buddhimaan -> Darpan -> Kalakruthi)
+            if (a.category.index != b.category.index) {
+              return a.category.index.compareTo(b.category.index);
+            }
+
+            // 3. Recency (Newest first if same status and category)
+            return b.createdAt.compareTo(a.createdAt);
+          });
+
           return Column(
             children: [
               // Search and Category Filters

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/models.dart';
 import '../../../core/enums/enums.dart';
@@ -59,12 +60,94 @@ final yearlyArchivesProvider = FutureProvider<List<YearlyArchive>>((ref) async {
   return (data as List).map((e) => YearlyArchive.fromJson(e)).toList();
 });
 
+final _pointsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.eventPoints).stream(primaryKey: ['id']));
+
 final departmentRankingsProvider = FutureProvider<List<DepartmentRanking>>((ref) async {
-  final data = await SupabaseConfig.client
-      .from(SupabaseTables.departmentRankings)
-      .select()
-      .order('total_points', ascending: false);
-  return (data as List).map((e) => DepartmentRanking.fromJson(e)).toList();
+  // Watch points stream to trigger re-calculation
+  ref.watch(_pointsStream);
+  
+  try {
+    // 1. Fetch all manual event points
+    final pointsData = await SupabaseConfig.client
+        .from(SupabaseTables.eventPoints)
+        .select();
+    final manualPoints = (pointsData as List).map((e) => EventPoint.fromJson(e)).toList();
+
+    // 2. Fetch all published results with branch info
+    final resultsData = await SupabaseConfig.client
+        .from(SupabaseTables.results)
+        .select('position, registrations!inner(student_master(branch))');
+    
+    final List<Map<String, dynamic>> resultsList = List<Map<String, dynamic>>.from(resultsData as List);
+
+    // 3. Group and sum by branch
+    final Map<String, Map<String, dynamic>> branchStats = {};
+    
+    void addPoints(String branch, int points, {bool isWin = false, bool isRunner = false, bool isSecondRunner = false}) {
+      final b = branch.toUpperCase();
+      if (!branchStats.containsKey(b)) {
+        branchStats[b] = {'points': 0, 'wins': 0, 'runnerUps': 0, 'secondRunnerUps': 0};
+      }
+      branchStats[b]!['points'] += points;
+      if (isWin) branchStats[b]!['wins'] += 1;
+      if (isRunner) branchStats[b]!['runnerUps'] += 1;
+      if (isSecondRunner) branchStats[b]!['secondRunnerUps'] += 1;
+    }
+
+    // Process manual points
+    for (var p in manualPoints) {
+      addPoints(p.branch, p.points, 
+        isWin: p.position == ResultPosition.winner,
+        isRunner: p.position == ResultPosition.runnerUp,
+        isSecondRunner: p.position == ResultPosition.secondRunnerUp);
+    }
+
+    // Process result-based points
+    // Winner: 10, Runner-up: 6, Second Runner-up: 4
+    for (var r in resultsList) {
+      final reg = r['registrations'] as Map<String, dynamic>?;
+      final student = reg?['student_master'] as Map<String, dynamic>?;
+      final branch = student?['branch'] as String?;
+      
+      if (branch != null) {
+        final pos = ResultPosition.fromString(r['position'] as String);
+        int points = 0;
+        bool isWin = false, isRunner = false, isSecondRunner = false;
+        
+        if (pos == ResultPosition.winner) { points = 10; isWin = true; }
+        else if (pos == ResultPosition.runnerUp) { points = 6; isRunner = true; }
+        else if (pos == ResultPosition.secondRunnerUp) { points = 4; isSecondRunner = true; }
+        
+        if (points > 0) {
+          addPoints(branch, points, isWin: isWin, isRunner: isRunner, isSecondRunner: isSecondRunner);
+        }
+      }
+    }
+
+    // 4. Convert to DepartmentRanking list and sort
+    final List<DepartmentRanking> rankings = branchStats.entries.map((entry) {
+      return DepartmentRanking(
+        id: entry.key,
+        festYear: 2024,
+        branch: entry.key,
+        totalPoints: entry.value['points'],
+        totalWins: entry.value['wins'],
+        totalRunnerUps: entry.value['runnerUps'],
+        totalSecondRunnerUps: entry.value['secondRunnerUps'],
+        lastCalculatedAt: DateTime.now(),
+      );
+    }).toList();
+
+    rankings.sort((a, b) => b.totalPoints.compareTo(a.totalPoints));
+    return rankings;
+  } catch (e) {
+    debugPrint('Error calculating live rankings: $e');
+    final data = await SupabaseConfig.client
+        .from(SupabaseTables.departmentRankings)
+        .select()
+        .order('total_points', ascending: false);
+    return (data as List).map((e) => DepartmentRanking.fromJson(e)).toList();
+  }
 });
 
 final eventPointsProvider = FutureProvider<List<EventPoint>>((ref) async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 
 // ── Design Tokens ──────────────────────────────────────────────────────────
 class LitColors {
@@ -616,7 +617,13 @@ class LitLifeAppBar extends StatelessWidget implements PreferredSizeWidget {
           ? (leading ??
               IconButton(
                 icon: const Icon(Icons.arrow_back, color: LitColors.bone),
-                onPressed: () => Navigator.maybePop(context),
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/dashboard');
+                  }
+                },
               ))
           : null,
       automaticallyImplyLeading: showBack,
@@ -1157,16 +1164,24 @@ class UserAvatar extends StatelessWidget {
             blurRadius: 6,
           ),
         ],
+        image: imageUrl != null && imageUrl!.startsWith('http')
+            ? DecorationImage(
+                image: NetworkImage(imageUrl!),
+                fit: BoxFit.cover,
+              )
+            : null,
       ),
       alignment: Alignment.center,
-      child: Text(
-        name.isNotEmpty ? name[0].toUpperCase() : '?',
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: radius * 0.8,
-          fontWeight: FontWeight.bold,
-          color: LitColors.amber,
-        ),
-      ),
+      child: (imageUrl == null || !imageUrl!.startsWith('http'))
+          ? Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: radius * 0.8,
+                fontWeight: FontWeight.bold,
+                color: LitColors.amber,
+              ),
+            )
+          : null,
     );
   }
 }

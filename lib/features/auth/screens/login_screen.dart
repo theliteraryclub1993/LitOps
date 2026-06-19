@@ -341,40 +341,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           ),
 
                           const SizedBox(height: 24),
-                          // Demo Admin Login button
-                          GestureDetector(
-                            onTap: authState.isLoading
-                                ? null
-                                : () async {
-                                    await ref.read(authStateProvider.notifier).signIn(
-                                          'admin@litops.com',
-                                          'litops123',
-                                        );
-                                  },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withOpacity(0.08)),
-                                color: LitColors.clay.withOpacity(0.5),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.terminal_outlined, color: LitColors.ash.withOpacity(0.5), size: 14),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Demo Admin Login',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: LitColors.ash.withOpacity(0.6),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ),

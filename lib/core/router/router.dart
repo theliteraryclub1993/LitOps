@@ -35,6 +35,7 @@ import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/profile_setup_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/waiting_list/screens/waiting_list_screen.dart';
+import '../../features/events/screens/registered_participants_screen.dart';
 import '../../features/shell/screens/app_shell.dart';
 
 // Enterprise Extension Screens
@@ -135,6 +136,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final isGoingToScheduling = location.startsWith('/scheduling');
       final isGoingToCreateEvent = location == '/events/create';
       final isGoingToAppeals = location.startsWith('/appeals');
+      final isGoingToScoreEntry = location.startsWith('/results/score');
 
       if (isGoingToAdmin && !userRole.isSuperAdmin) {
         return '/dashboard';
@@ -149,6 +151,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (isGoingToCreateEvent && !userRole.canCreateEvents) {
+        return '/dashboard';
+      }
+
+      if (isGoingToScoreEntry && !userRole.canManageResults) {
         return '/dashboard';
       }
 
@@ -204,6 +210,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                   eventId: state.pathParameters['eventId']!,
                 ),
                 routes: [
+                  GoRoute(
+                    path: 'participants',
+                    builder: (context, state) => RegisteredParticipantsScreen(
+                      eventId: state.pathParameters['eventId']!,
+                      event: state.extra as Event?,
+                    ),
+                  ),
                   GoRoute(
                     path: 'edit',
                     builder: (context, state) => CreateEventScreen(

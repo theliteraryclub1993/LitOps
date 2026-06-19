@@ -252,7 +252,7 @@ class EventDetailScreen extends ConsumerWidget {
                         child: Row(
                           children: [
                             _buildTabItem(context, 'Overview', true, null),
-                            _buildTabItem(context, 'Participants', false, () => context.push('/registration', extra: event)),
+                            _buildTabItem(context, 'Participants', false, () => context.push('/events/$eventId/participants', extra: event)),
                             _buildTabItem(context, 'Rounds', false, () => context.push('/rounds/$eventId')),
                             _buildTabItem(context, 'Results', false, () => context.push('/results/score/$eventId')),
                           ],

@@ -941,67 +941,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      
-                      // ── DIAGNOSTICS CARD ──
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Developer Diagnostics',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: Colors.red.shade300,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _debugInfoRow('Auth State profile', ref.watch(authStateProvider).profile != null ? 'Loaded' : 'Null'),
-                            _debugInfoRow('Profile ID', ref.watch(authStateProvider).profile?.id ?? 'Null'),
-                            _debugInfoRow('Saved Phone', ref.watch(authStateProvider).profile?.phone ?? 'Null'),
-                            _debugInfoRow('Saved DOB', ref.watch(authStateProvider).profile?.dateOfBirth?.toString() ?? 'Null'),
-                            _debugInfoRow('Saved Year', ref.watch(authStateProvider).profile?.year?.toString() ?? 'Null'),
-                            if (_debugError != null) ...[
-                              const SizedBox(height: 10),
-                              Text(
-                                'Error: $_debugError',
-                                style: TextStyle(color: Colors.red.shade200, fontSize: 12),
-                              ),
-                            ],
-                            const SizedBox(height: 14),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  debugBypassIncompleteCheck = true;
-                                  context.go('/dashboard');
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red.shade800,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                ),
-                                icon: const Icon(Icons.bug_report_rounded, size: 16),
-                                label: Text(
-                                  'Bypass Setup Guard',
-                                  style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -1011,19 +950,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen>
           ),
         ),
       );
-  }
-
-  Widget _debugInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Color(0xFF8C857C), fontSize: 11)),
-          Text(value, style: const TextStyle(color: Color(0xFFF3ECE2), fontSize: 11, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
   }
 
   Widget _buildSection({

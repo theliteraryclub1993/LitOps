@@ -294,24 +294,25 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
         }
 
         // Insert registration
-        await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
+        final regData = await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
           'event_id': _selectedEvent!.id,
           'student_id': student.id,
           'registration_method': 'barcode',
           'registered_by': userId,
-        });
+        }).select().single();
 
         // Automatically mark attendance
         final existingAttendance = await SupabaseConfig.client
             .from(SupabaseTables.attendance)
             .select('id')
             .eq('event_id', _selectedEvent!.id)
-            .eq('student_id', student.id)
+            .eq('registration_id', regData['id'])
             .maybeSingle();
 
         if (existingAttendance == null) {
           await SupabaseConfig.client.from(SupabaseTables.attendance).insert({
             'event_id': _selectedEvent!.id,
+            'registration_id': regData['id'],
             'student_id': student.id,
             'marked_by': userId,
           });
@@ -360,8 +361,9 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               .eq('is_cancelled', false)
               .maybeSingle();
 
+          String regId;
           if (existing == null) {
-            await SupabaseConfig.client
+            final regData = await SupabaseConfig.client
                 .from(SupabaseTables.registrations)
                 .insert({
               'event_id': _selectedEvent!.id,
@@ -369,7 +371,10 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               'registration_method': 'barcode',
               'registered_by': userId,
               'team_id': teamId,
-            });
+            }).select().single();
+            regId = regData['id'];
+          } else {
+            regId = existing['id'];
           }
 
           // Automatically mark attendance for team member
@@ -377,12 +382,13 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               .from(SupabaseTables.attendance)
               .select('id')
               .eq('event_id', _selectedEvent!.id)
-              .eq('student_id', student.id)
+              .eq('registration_id', regId)
               .maybeSingle();
 
           if (existingAttendance == null) {
             await SupabaseConfig.client.from(SupabaseTables.attendance).insert({
               'event_id': _selectedEvent!.id,
+              'registration_id': regId,
               'student_id': student.id,
               'marked_by': userId,
             });

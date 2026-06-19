@@ -7,31 +7,33 @@ import '../../../core/models/models.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 
-final leaderboardProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final data = await SupabaseConfig.client
+final leaderboardProvider = StreamProvider<List<Map<String, dynamic>>>((ref) async* {
+  final dataStream = SupabaseConfig.client
       .from(SupabaseTables.sarvottamPoints)
-      .select();
+      .stream(primaryKey: ['id']);
 
-  final branchPoints = <String, int>{};
-  for (final row in (data as List)) {
-    final branch = row['branch'].toString().toUpperCase();
-    final points = int.tryParse(row['points'].toString()) ?? 0;
-    branchPoints[branch] = (branchPoints[branch] ?? 0) + points;
+  await for (final data in dataStream) {
+    final branchPoints = <String, int>{};
+    for (final row in data) {
+      final branch = row['branch'].toString().toUpperCase();
+      final points = int.tryParse(row['points'].toString()) ?? 0;
+      branchPoints[branch] = (branchPoints[branch] ?? 0) + points;
+    }
+
+    final sortedList = branchPoints.entries.map((entry) {
+      return {
+        'name': entry.key,
+        'points': entry.value,
+      };
+    }).toList();
+    sortedList.sort((a, b) => (b['points'] as int).compareTo(a['points'] as int));
+
+    for (int i = 0; i < sortedList.length; i++) {
+      sortedList[i]['rank'] = i + 1;
+    }
+
+    yield sortedList;
   }
-
-  final sortedList = branchPoints.entries.map((entry) {
-    return {
-      'name': entry.key,
-      'points': entry.value,
-    };
-  }).toList();
-  sortedList.sort((a, b) => (b['points'] as int).compareTo(a['points'] as int));
-
-  for (int i = 0; i < sortedList.length; i++) {
-    sortedList[i]['rank'] = i + 1;
-  }
-
-  return sortedList;
 });
 
 class LeaderboardScreen extends ConsumerWidget {

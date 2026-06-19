@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -11,15 +12,22 @@ import '../../../core/models/models.dart';
 import '../../../core/widgets/common_widgets.dart';
 import 'package:intl/intl.dart';
 
-final ongoingEventsProvider = FutureProvider<List<Event>>((ref) async {
-  final data = await SupabaseConfig.client
+final _registrationsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.registrations).stream(primaryKey: ['id']));
+final _eventsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.events).stream(primaryKey: ['id']));
+final _assignmentsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.eventAssignments).stream(primaryKey: ['id']));
+
+final ongoingEventsProvider = StreamProvider<List<Event>>((ref) {
+  return SupabaseConfig.client
       .from(SupabaseTables.events)
-      .select()
-      .eq('status', EventStatus.ongoing.value);
-  return (data as List).map((e) => Event.fromJson(e)).toList();
+      .stream(primaryKey: ['id'])
+      .eq('status', EventStatus.ongoing.value)
+      .map((data) => data.map((e) => Event.fromJson(e)).toList());
 });
 
 final myAssignedEventsProvider = FutureProvider<List<Event>>((ref) async {
+  // Watch for any assignment changes to trigger a re-fetch
+  ref.watch(_assignmentsStream);
+  
   final profile = ref.read(currentProfileProvider);
   if (profile == null) return [];
   
@@ -32,6 +40,10 @@ final myAssignedEventsProvider = FutureProvider<List<Event>>((ref) async {
 });
 
 final dashboardStatsProvider = FutureProvider<Map<String, int>>((ref) async {
+  // Re-run stats calculation whenever registrations or events change
+  ref.watch(_registrationsStream);
+  ref.watch(_eventsStream);
+
   try {
     final client = SupabaseConfig.client;
     final eventsRes = await client.from(SupabaseTables.events).select('id');
@@ -79,7 +91,7 @@ class DashboardScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         title: Text(
-          'LitLife',
+          'Lit Life',
           style: GoogleFonts.fredoka(fontWeight: FontWeight.w600, fontSize: 17, color: LitColors.bone),
         ),
         actions: [
@@ -91,7 +103,10 @@ class DashboardScreen extends ConsumerWidget {
           const SizedBox(width: 4),
           GestureDetector(
             onTap: () => context.go('/profile'),
-            child: UserAvatar(name: profile?.fullName ?? 'U'),
+            child: UserAvatar(
+              name: profile?.fullName ?? 'U',
+              imageUrl: profile?.photoUrl,
+            ),
           ),
           const SizedBox(width: 16),
         ],
@@ -109,20 +124,20 @@ class DashboardScreen extends ConsumerWidget {
               _buildHeader(context, profile),
               if (profile?.role.isSuperAdmin == true) ...[
                 const SizedBox(height: 16),
-                _buildAdminConsoleCard(context),
+                _FadeIn(delay: 100, child: _buildAdminConsoleCard(context)),
               ],
               const SizedBox(height: 16),
-              _buildBentoGrid(context, statsAsync, profile?.role.canViewAppeals == true),
+              _FadeIn(delay: 200, child: _buildBentoGrid(context, statsAsync, profile?.role.canViewAppeals == true && profile?.role.isSuperAdmin != true)),
               const SizedBox(height: 24),
-              _buildSectionTitle(context, 'Quick Services'),
+              _FadeIn(delay: 300, child: _buildSectionTitle(context, 'Quick Services')),
+              const SizedBox(height: 8),
+              _FadeIn(delay: 400, child: _buildServicesGrid(context, profile, ref)),
+              const SizedBox(height: 8),
+              _FadeIn(delay: 500, child: const LiveRankingsWidget()),
+              const SizedBox(height: 24),
+              _FadeIn(delay: 600, child: _buildSectionTitle(context, 'Upcoming Highlights')),
               const SizedBox(height: 12),
-              _buildServicesGrid(context, profile, ref),
-              const SizedBox(height: 24),
-              const LiveRankingsWidget(),
-              const SizedBox(height: 24),
-              _buildSectionTitle(context, 'Upcoming Highlights'),
-              const SizedBox(height: 12),
-              _buildHighlights(context),
+              _FadeIn(delay: 700, child: _buildHighlights(context)),
             ],
           ),
         ),
@@ -141,13 +156,16 @@ class DashboardScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         title: Text(
-          'LitLife',
+          'Lit Life',
           style: GoogleFonts.fredoka(fontWeight: FontWeight.w600, fontSize: 17, color: LitColors.bone),
         ),
         actions: [
           GestureDetector(
             onTap: () => context.go('/profile'),
-            child: UserAvatar(name: profile.fullName),
+            child: UserAvatar(
+              name: profile.fullName,
+              imageUrl: profile.photoUrl,
+            ),
           ),
           const SizedBox(width: 16),
         ],
@@ -166,7 +184,7 @@ class DashboardScreen extends ConsumerWidget {
               _buildHeader(context, profile),
               const SizedBox(height: 24),
               
-              _buildSectionTitle(context, 'Ongoing Events'),
+              _FadeIn(delay: 100, child: _buildSectionTitle(context, 'Ongoing Events')),
               const SizedBox(height: 12),
               ongoingAsync.when(
                 data: (events) {
@@ -174,7 +192,12 @@ class DashboardScreen extends ConsumerWidget {
                     return _buildEmptyState('No events are currently running.');
                   }
                   return Column(
-                    children: events.map((e) => _buildEventCard(context, e, true)).toList(),
+                    children: events.asMap().entries.map((entry) {
+                      return _FadeIn(
+                        delay: 150 + (entry.key * 50),
+                        child: _buildEventCard(context, entry.value, true),
+                      );
+                    }).toList(),
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
@@ -182,7 +205,7 @@ class DashboardScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 24),
 
-              _buildSectionTitle(context, 'My Assigned Events'),
+              _FadeIn(delay: 300, child: _buildSectionTitle(context, 'My Assigned Events')),
               const SizedBox(height: 12),
               assignedAsync.when(
                 data: (events) {
@@ -190,7 +213,12 @@ class DashboardScreen extends ConsumerWidget {
                     return _buildEmptyState('You have no upcoming assignments.');
                   }
                   return Column(
-                    children: events.map((e) => _buildEventCard(context, e, false)).toList(),
+                    children: events.asMap().entries.map((entry) {
+                      return _FadeIn(
+                        delay: 350 + (entry.key * 50),
+                        child: _buildEventCard(context, entry.value, false),
+                      );
+                    }).toList(),
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
@@ -198,9 +226,9 @@ class DashboardScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 24),
               
-              _buildSectionTitle(context, 'Quick Services'),
+              _FadeIn(delay: 500, child: _buildSectionTitle(context, 'Quick Services')),
               const SizedBox(height: 12),
-              _buildNonAdminServicesGrid(context, profile, ref),
+              _FadeIn(delay: 600, child: _buildNonAdminServicesGrid(context, profile, ref)),
               const SizedBox(height: 24),
             ],
           ),
@@ -305,51 +333,23 @@ class DashboardScreen extends ConsumerWidget {
       {'icon': Icons.group_rounded, 'label': 'Students', 'route': '/students', 'color': LitColors.ash},
       if (showAssignments)
         {'icon': Icons.assignment_ind_rounded, 'label': 'Assign Crew', 'route': '/assignments', 'color': LitColors.amber},
-      {'icon': Icons.analytics_rounded, 'label': 'Analytics', 'route': '/analytics', 'color': LitColors.ember},
+      {'icon': Icons.emoji_events_rounded, 'label': 'Results', 'route': '/results', 'color': LitColors.ember},
+      {'icon': Icons.analytics_rounded, 'label': 'Analytics', 'route': '/analytics', 'color': LitColors.amber},
     ];
 
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.6,
+        crossAxisCount: 3,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 1.0,
       ),
       itemCount: services.length,
       itemBuilder: (context, index) {
         final service = services[index];
-        return ClayCard(
-          padding: EdgeInsets.zero,
-          onTap: () {
-            final route = service['route'] as String;
-            const tabRoutes = ['/dashboard', '/events', '/registration', '/analytics', '/admin'];
-            if (tabRoutes.contains(route)) {
-              context.go(route);
-            } else {
-              context.push(route);
-            }
-          },
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: const BoxDecoration(
-                  color: LitColors.clay2,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(service['icon'] as IconData, color: service['color'] as Color, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                service['label'] as String,
-                style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.bold, color: LitColors.bone),
-              ),
-            ],
-          ),
-        );
+        return _buildServiceCard(context, service);
       },
     );
   }
@@ -552,37 +552,41 @@ class DashboardScreen extends ConsumerWidget {
       itemCount: services.length,
       itemBuilder: (context, index) {
         final service = services[index];
-        return ClayCard(
-          padding: EdgeInsets.zero,
-          onTap: () {
-            final route = service['route'] as String;
-            const tabRoutes = ['/dashboard', '/events', '/registration', '/analytics', '/admin'];
-            if (tabRoutes.contains(route)) {
-              context.go(route);
-            } else {
-              context.push(route);
-            }
-          },
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: const BoxDecoration(
-                  color: LitColors.clay2,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(service['icon'] as IconData, color: service['color'] as Color, size: 20),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                service['label'] as String,
-                style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.bold, color: LitColors.bone),
-              ),
-            ],
-          ),
-        );
+        return _buildServiceCard(context, service);
       },
+    );
+  }
+
+  Widget _buildServiceCard(BuildContext context, Map<String, dynamic> service) {
+    return ClayCard(
+      padding: EdgeInsets.zero,
+      onTap: () {
+        final route = service['route'] as String;
+        const tabRoutes = ['/dashboard', '/events', '/registration', '/admin'];
+        if (tabRoutes.contains(route)) {
+          context.go(route);
+        } else {
+          context.push(route);
+        }
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              color: LitColors.clay2,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(service['icon'] as IconData, color: service['color'] as Color, size: 20),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            service['label'] as String,
+            style: GoogleFonts.plusJakartaSans(fontSize: 10, fontWeight: FontWeight.bold, color: LitColors.bone),
+          ),
+        ],
+      ),
     );
   }
 
@@ -683,7 +687,7 @@ class LiveRankingsWidget extends ConsumerWidget {
 
     return ClayCard(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -711,60 +715,116 @@ class LiveRankingsWidget extends ConsumerWidget {
                 );
               }
 
-              // Take only top 4 standings like in HTML
-              final displayRankings = rankings.take(4).toList();
-              // Find max points to scale progress bars
-              final maxPoints = displayRankings.isNotEmpty 
-                  ? displayRankings.first.totalPoints
-                  : 1;
+              // Take top 5 for the chart
+              final topRankings = rankings.take(5).toList();
+              final maxPoints = topRankings.isNotEmpty ? topRankings.first.totalPoints : 1;
 
               return Column(
-                children: List.generate(displayRankings.length, (index) {
-                  final rank = displayRankings[index];
-                  final isTop3 = index < 3;
-                  final progress = rank.totalPoints / (maxPoints > 0 ? maxPoints : 1);
-                  
-                  return Container(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    decoration: BoxDecoration(
-                      border: index == displayRankings.length - 1 
-                          ? null 
-                          : const Border(bottom: BorderSide(color: Color(0xFF262220))),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  '${index + 1} · ${rank.branch}',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: LitColors.bone,
+                children: [
+                  // Bar Chart Representation
+                  SizedBox(
+                    height: 160,
+                    child: BarChart(
+                      BarChartData(
+                        alignment: BarChartAlignment.spaceAround,
+                        maxY: maxPoints * 1.2,
+                        barTouchData: BarTouchData(enabled: false),
+                        titlesData: FlTitlesData(
+                          show: true,
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              getTitlesWidget: (value, meta) {
+                                final index = value.toInt();
+                                if (index < 0 || index >= topRankings.length) return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text(
+                                    topRankings[index].branch,
+                                    style: const TextStyle(color: LitColors.ash, fontSize: 9, fontWeight: FontWeight.bold),
                                   ),
-                                ),
-                              ],
+                                );
+                              },
+                              reservedSize: 28,
                             ),
-                            Text(
-                              '${rank.totalPoints}',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: isTop3 ? LitColors.amber : LitColors.bone,
-                              ),
-                            ),
-                          ],
+                          ),
+                          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         ),
-                        const SizedBox(height: 6),
-                        ClayProgressBar(progress: progress),
-                      ],
+                        gridData: const FlGridData(show: false),
+                        borderData: FlBorderData(show: false),
+                        barGroups: List.generate(topRankings.length, (index) {
+                          return BarChartGroupData(
+                            x: index,
+                            barRods: [
+                              BarChartRodData(
+                                toY: topRankings[index].totalPoints.toDouble(),
+                                gradient: LinearGradient(
+                                  colors: index == 0 
+                                      ? [LitColors.ember, LitColors.amber] 
+                                      : [LitColors.clay3, LitColors.ash],
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                ),
+                                width: 18,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                              ),
+                            ],
+                          );
+                        }),
+                      ),
                     ),
-                  );
-                }),
+                  ),
+                  const SizedBox(height: 20),
+                  // Detailed List View
+                  ...List.generate(topRankings.length, (index) {
+                    final rank = topRankings[index];
+                    final isTop3 = index < 3;
+                    final progress = rank.totalPoints / (maxPoints > 0 ? maxPoints : 1);
+                    
+                    return Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      decoration: BoxDecoration(
+                        border: index == topRankings.length - 1 
+                            ? null 
+                            : const Border(bottom: BorderSide(color: Color(0xFF262220))),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    '${index + 1} · ${rank.branch}',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: LitColors.bone,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '${rank.totalPoints}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isTop3 ? LitColors.amber : LitColors.bone,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          ClayProgressBar(progress: progress),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
               );
             },
             loading: () => const Center(
@@ -777,6 +837,60 @@ class LiveRankingsWidget extends ConsumerWidget {
             error: (e, _) => Text('Failed to load standings', style: GoogleFonts.plusJakartaSans(color: LitColors.coral, fontSize: 11)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FadeIn extends StatefulWidget {
+  final Widget child;
+  final int delay;
+
+  const _FadeIn({required this.child, required this.delay});
+
+  @override
+  State<_FadeIn> createState() => _FadeInState();
+}
+
+class _FadeInState extends State<_FadeIn> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacity;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
+    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+
+    _slide = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    Future.delayed(Duration(milliseconds: widget.delay), () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(
+        position: _slide,
+        child: widget.child,
       ),
     );
   }

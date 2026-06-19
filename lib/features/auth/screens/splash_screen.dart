@@ -13,28 +13,71 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
+    with TickerProviderStateMixin {
+  late AnimationController _logoController;
+  late AnimationController _textController;
+  
+  late Animation<double> _logoScale;
+  late Animation<double> _logoFade;
+  late Animation<double> _textFade;
+  late Animation<double> _textSlide;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+    
+    _logoController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    
+    _textController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
     );
-    _controller.forward();
+
+    _logoScale = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _logoController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+
+    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _logoController,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+      ),
+    );
+
+    _textFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _textController,
+        curve: Curves.easeIn,
+      ),
+    );
+
+    _textSlide = Tween<double>(begin: 15.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _textController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    _runAnimations();
+  }
+
+  Future<void> _runAnimations() async {
+    _logoController.forward();
+    await Future.delayed(const Duration(milliseconds: 700));
+    _textController.forward();
+    
+    await Future.delayed(const Duration(milliseconds: 1800));
     _checkAuth();
   }
 
   Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
-
     final authState = ref.read(authStateProvider);
     if (authState.isAuthenticated) {
       context.go('/dashboard');
@@ -45,104 +88,83 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _logoController.dispose();
+    _textController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: LitColors.void_,
+      backgroundColor: Colors.black, // Matching the exact black background of the logo
       body: Stack(
         children: [
-          // Background Glows
+          // Background ambient glows (subtle)
           Positioned.fill(
             child: CustomPaint(
               painter: RadialGlowPainter(),
             ),
           ),
-          FadeTransition(
-            opacity: _fadeAnimation,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Dashed outline clay container
-                  Container(
-                    width: 84,
-                    height: 84,
-                    decoration: BoxDecoration(
-                      color: LitColors.clay,
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: LitColors.ember,
-                        width: 2.0,
-                        style: BorderStyle.solid, // Flutter doesn't have native dashed border without package, we use solid with opacity or custom paint.
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.6),
-                          offset: const Offset(8, 8),
-                          blurRadius: 18,
+          
+          // Central Content
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Exact Logo Image from assets
+                AnimatedBuilder(
+                  animation: _logoController,
+                  builder: (context, child) {
+                    return Opacity(
+                      opacity: _logoFade.value,
+                      child: Transform.scale(
+                        scale: _logoScale.value,
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          width: 200,
+                          height: 200,
+                          fit: BoxFit.contain,
                         ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      'LIT',
-                      style: GoogleFonts.fredoka(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: LitColors.ember,
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'LitLife',
-                    style: GoogleFonts.fredoka(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: LitColors.bone,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Malnad Fest, operated.',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 10.5,
-                      color: LitColors.ash,
-                    ),
-                  ),
-                  const SizedBox(height: 120),
-                ],
-              ),
+                    );
+                  },
+                ),
+                
+                const SizedBox(height: 80),
+              ],
             ),
           ),
-          // Footer
+          
+          // Bottom Branding Footer
           Positioned(
             bottom: 34,
             left: 0,
             right: 0,
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CustomPaint(
-                    size: const Size(120, 14),
-                    painter: WavyLinePainter(),
+            child: AnimatedBuilder(
+              animation: _textController,
+              builder: (context, child) {
+                return Opacity(
+                  opacity: _textFade.value,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CustomPaint(
+                        size: const Size(120, 14),
+                        painter: WavyLinePainter(),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'v2.4.0 · Malnad Fest Build',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 10,
+                          color: Colors.white.withOpacity(0.5),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'v2.4.0 · Malnad Fest Build',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 9.5,
-                      color: LitColors.ash,
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ],
@@ -151,15 +173,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 }
 
-
-
 class WavyLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = LitColors.ember.withOpacity(0.7)
+      ..color = const Color(0xFFFF6A2C).withOpacity(0.6)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6
+      ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round;
 
     final path = Path();

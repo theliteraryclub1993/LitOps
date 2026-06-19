@@ -15,7 +15,7 @@ class AppShell extends ConsumerWidget {
     final role = ref.watch(currentUserRoleProvider);
     final isSuperAdmin = role.isSuperAdmin;
 
-    final leftItems = [
+    final navItems = [
       NavBarItem(
         icon: Icons.home_outlined,
         selectedIcon: Icons.home,
@@ -28,17 +28,6 @@ class AppShell extends ConsumerWidget {
         label: 'Events',
         route: '/events',
       ),
-    ];
-
-    final centerItem = NavBarItem(
-      icon: Icons.qr_code_scanner_outlined,
-      selectedIcon: Icons.qr_code_scanner,
-      label: 'Register',
-      route: '/registration',
-      isCenter: true,
-    );
-
-    final rightItems = [
       if (isSuperAdmin)
         NavBarItem(
           icon: Icons.admin_panel_settings_outlined,
@@ -61,31 +50,75 @@ class AppShell extends ConsumerWidget {
       ),
     ];
 
-    final allItems = [...leftItems, centerItem, ...rightItems];
-
     int calculateSelectedIndex() {
       final location = GoRouterState.of(context).matchedLocation;
-      for (int i = 0; i < allItems.length; i++) {
-        if (location.startsWith(allItems[i].route)) {
+      for (int i = 0; i < navItems.length; i++) {
+        if (location.startsWith(navItems[i].route)) {
           return i;
         }
       }
-      return -1;
+      return 0; // Default to first item
     }
 
     void onItemTapped(int index) {
-      if (index >= 0 && index < allItems.length) {
-        context.go(allItems[index].route);
+      if (index >= 0 && index < navItems.length) {
+        context.go(navItems[index].route);
       }
     }
 
     return Scaffold(
-      body: child,
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 100), // Height of bar + margin
+            child: child,
+          ),
+          Positioned(
+            right: 24,
+            bottom: 130,
+            child: GestureDetector(
+              onTap: () => context.push('/registration'),
+              child: Container(
+                height: 56,
+                width: 56,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [LitColors.ember, LitColors.emberDark],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: LitColors.ember.withOpacity(0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: Color(0xFF1A0D05),
+                  size: 26,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      extendBody: true,
       bottomNavigationBar: ClayBottomNavBar(
         selectedIndex: calculateSelectedIndex(),
-        leftItems: leftItems,
-        centerItem: centerItem,
-        rightItems: rightItems,
+        items: navItems,
         onDestinationSelected: onItemTapped,
       ),
     );
@@ -94,149 +127,80 @@ class AppShell extends ConsumerWidget {
 
 class ClayBottomNavBar extends StatelessWidget {
   final int selectedIndex;
-  final List<NavBarItem> leftItems;
-  final NavBarItem centerItem;
-  final List<NavBarItem> rightItems;
+  final List<NavBarItem> items;
   final ValueChanged<int> onDestinationSelected;
 
   const ClayBottomNavBar({
     super.key,
     required this.selectedIndex,
-    required this.leftItems,
-    required this.centerItem,
-    required this.rightItems,
+    required this.items,
     required this.onDestinationSelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    final centerIndex = leftItems.length;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+      height: 80,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF080808),
+        borderRadius: BorderRadius.circular(40),
+        border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: List.generate(items.length, (index) {
+          final item = items[index];
+          final isSelected = selectedIndex == index;
 
-    Widget buildItem(int globalIndex, NavBarItem item) {
-      final isSelected = selectedIndex == globalIndex;
-      return GestureDetector(
-        onTap: () => onDestinationSelected(globalIndex),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          padding: EdgeInsets.symmetric(horizontal: isSelected ? 12 : 0, vertical: 8),
-          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-          decoration: BoxDecoration(
-            color: isSelected ? LitColors.ember.withOpacity(0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: isSelected ? LitColors.ember : LitColors.clay2,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isSelected ? item.selectedIcon : item.icon,
-                  color: isSelected ? LitColors.bone : LitColors.ash,
-                  size: 20,
-                ),
+          return GestureDetector(
+            onTap: () => onDestinationSelected(index),
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOutCubic,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(35),
               ),
-              if (isSelected) ...[
-                const SizedBox(width: 8),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    item.label,
-                    key: ValueKey(item.label),
-                    style: GoogleFonts.plusJakartaSans(
-                      color: LitColors.ember,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 350),
+                    height: 50,
+                    width: 50,
+                    decoration: BoxDecoration(
+                      color: isSelected ? LitColors.ember : Colors.transparent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isSelected ? item.selectedIcon : item.icon,
+                      color: isSelected ? const Color(0xFF1A0D05) : LitColors.ash,
+                      size: 24,
                     ),
                   ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // 1. Background blurred container
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.35),
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x55000000), blurRadius: 12, offset: Offset(0, 4)),
+                  if (isSelected) ...[
+                    const SizedBox(width: 12),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: Text(
+                        item.label,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: LitColors.bone,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(30),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: const SizedBox.expand(),
-                ),
-              ),
             ),
-          ),
-          // 2. The items Row
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(
-                      leftItems.length,
-                      (index) => buildItem(index, leftItems[index]),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 56), // spacer for floating button
-                Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(
-                      rightItems.length,
-                      (index) => buildItem(leftItems.length + 1 + index, rightItems[index]),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 3. Floating action button
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 8.0,
-            child: Center(
-              child: Container(
-                transform: Matrix4.translationValues(0.0, -20.0, 0.0),
-                child: ClayButton(
-                  width: 56,
-                  height: 56,
-                  borderRadius: 28,
-                  padding: EdgeInsets.zero,
-                  onPressed: () => onDestinationSelected(centerIndex),
-                  child: Icon(
-                    centerItem.icon,
-                    color: const Color(0xFF1A0D05),
-                    size: 24,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          );
+        }),
       ),
     );
   }
@@ -247,13 +211,11 @@ class NavBarItem {
   final IconData selectedIcon;
   final String label;
   final String route;
-  final bool isCenter;
 
   NavBarItem({
     required this.icon,
     required this.selectedIcon,
     required this.label,
     required this.route,
-    this.isCenter = false,
   });
 }

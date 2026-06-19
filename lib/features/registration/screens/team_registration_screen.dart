@@ -69,6 +69,9 @@ class _TeamRegistrationScreenState
       setState(() {
         _members.add(student);
         _captain ??= student;
+        if (_members.length == 1 && _teamNameCtrl.text.isEmpty) {
+          _teamNameCtrl.text = student.branch;
+        }
         _usnCtrl.clear();
       });
     } catch (e) {
@@ -105,12 +108,21 @@ class _TeamRegistrationScreenState
           'student_id': member.id,
           'is_captain': member.id == _captain?.id,
         });
-        await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
+        final regData = await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
           'event_id': _selectedEvent!.id,
           'student_id': member.id,
           'team_id': teamData['id'],
           'registration_method': 'barcode',
           'registered_by': profile.id,
+        }).select().single();
+
+        // Auto mark attendance
+        await SupabaseConfig.client.from(SupabaseTables.attendance).insert({
+          'event_id': _selectedEvent!.id,
+          'registration_id': regData['id'],
+          'student_id': member.id,
+          'marked_by': profile.id,
+          'method': 'barcode',
         });
       }
       if (mounted) {

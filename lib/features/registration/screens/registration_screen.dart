@@ -289,7 +289,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
       _clearStudentForm();
       
       if (_activeSlotIndex == 0 && _teamNameController.text.trim().isEmpty) {
-        _teamNameController.text = "${student.name}'s Team";
+        _teamNameController.text = student.branch;
       }
 
       _moveToNextEmptySlot();
@@ -336,6 +336,29 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         );
         return;
       }
+
+      // Check if any team member is already registered for this event
+      for (final student in _participants) {
+        if (student != null) {
+          final duplicate = await SupabaseConfig.client
+              .from(SupabaseTables.registrations)
+              .select('id')
+              .eq('event_id', _selectedEvent!.id)
+              .eq('student_id', student.id)
+              .eq('is_cancelled', false)
+              .maybeSingle();
+
+          if (duplicate != null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('${student.name} is already registered for this event!'), backgroundColor: LitColors.amber),
+              );
+            }
+            setState(() => _saving = false);
+            return;
+          }
+        }
+      }
     } else {
       if (_participants.isEmpty || _participants[0] == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -374,24 +397,25 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         }
 
         // Insert registration
-        await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
+        final regData = await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
           'event_id': _selectedEvent!.id,
           'student_id': student.id,
           'registration_method': method,
           'registered_by': userId,
-        });
+        }).select().single();
 
         // Auto mark attendance
         final existingAttendance = await SupabaseConfig.client
             .from(SupabaseTables.attendance)
             .select('id')
             .eq('event_id', _selectedEvent!.id)
-            .eq('student_id', student.id)
+            .eq('registration_id', regData['id'])
             .maybeSingle();
 
         if (existingAttendance == null) {
           await SupabaseConfig.client.from(SupabaseTables.attendance).insert({
             'event_id': _selectedEvent!.id,
+            'registration_id': regData['id'],
             'student_id': student.id,
             'marked_by': userId,
           });
@@ -426,11 +450,21 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
           final student = _participants[i]!;
           final isCaptain = (i == 0);
 
-          await SupabaseConfig.client.from(SupabaseTables.teamMembers).insert({
-            'team_id': teamId,
-            'student_id': student.id,
-            'is_captain': isCaptain,
-          });
+          // First, check if team member already exists (shouldn't, but just in case)
+          final existingTeamMember = await SupabaseConfig.client
+              .from(SupabaseTables.teamMembers)
+              .select('id')
+              .eq('team_id', teamId)
+              .eq('student_id', student.id)
+              .maybeSingle();
+
+          if (existingTeamMember == null) {
+            await SupabaseConfig.client.from(SupabaseTables.teamMembers).insert({
+              'team_id': teamId,
+              'student_id': student.id,
+              'is_captain': isCaptain,
+            });
+          }
 
           final duplicate = await SupabaseConfig.client
               .from(SupabaseTables.registrations)
@@ -440,14 +474,18 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
               .eq('is_cancelled', false)
               .maybeSingle();
 
+          String regId;
           if (duplicate == null) {
-            await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
+            final regData = await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
               'event_id': _selectedEvent!.id,
               'student_id': student.id,
               'team_id': teamId,
               'registration_method': method,
               'registered_by': userId,
-            });
+            }).select().single();
+            regId = regData['id'];
+          } else {
+            regId = duplicate['id'];
           }
 
           // Auto mark attendance
@@ -455,12 +493,13 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
               .from(SupabaseTables.attendance)
               .select('id')
               .eq('event_id', _selectedEvent!.id)
-              .eq('student_id', student.id)
+              .eq('registration_id', regId)
               .maybeSingle();
 
           if (existingAttendance == null) {
             await SupabaseConfig.client.from(SupabaseTables.attendance).insert({
               'event_id': _selectedEvent!.id,
+              'registration_id': regId,
               'student_id': student.id,
               'marked_by': userId,
             });
