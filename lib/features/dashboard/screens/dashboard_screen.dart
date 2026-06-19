@@ -333,6 +333,7 @@ class DashboardScreen extends ConsumerWidget {
       {'icon': Icons.group_rounded, 'label': 'Students', 'route': '/students', 'color': LitColors.ash},
       if (showAssignments)
         {'icon': Icons.assignment_ind_rounded, 'label': 'Assign Crew', 'route': '/assignments', 'color': LitColors.amber},
+      {'icon': Icons.emoji_events_rounded, 'label': 'Results', 'route': '/results', 'color': LitColors.ember},
       {'icon': Icons.analytics_rounded, 'label': 'Analytics', 'route': '/analytics', 'color': LitColors.amber},
     ];
 
@@ -535,6 +536,7 @@ class DashboardScreen extends ConsumerWidget {
       if (showAssignments)
         {'icon': Icons.assignment_ind_rounded, 'label': 'Assign Crew', 'route': '/assignments', 'color': LitColors.amber},
       {'icon': Icons.group_rounded, 'label': 'Students', 'route': '/students', 'color': LitColors.ash},
+      {'icon': Icons.emoji_events_rounded, 'label': 'Results', 'route': '/results', 'color': LitColors.ember},
       {'icon': Icons.analytics_rounded, 'label': 'Analytics', 'route': '/analytics', 'color': LitColors.amber},
     ];
 

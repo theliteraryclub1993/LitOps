@@ -13,10 +13,10 @@ final completedEventsProvider = StreamProvider<List<Event>>((ref) {
   return SupabaseConfig.client
       .from(SupabaseTables.events)
       .stream(primaryKey: ['id'])
-      .order('title')
+      .order('updated_at', ascending: false)
       .map((data) => data
           .map((e) => Event.fromJson(e))
-          .where((e) => [EventStatus.completed, EventStatus.resultsPublished, EventStatus.ongoing].contains(e.status))
+          .where((e) => [EventStatus.completed, EventStatus.resultsPublished].contains(e.status))
           .toList());
 });
 
@@ -55,6 +55,78 @@ class ResultsScreen extends ConsumerStatefulWidget {
   ConsumerState<ResultsScreen> createState() => _ResultsScreenState();
 }
 
+class _AnimatedTrophyIcon extends StatefulWidget {
+  final bool isPublished;
+
+  const _AnimatedTrophyIcon({required this.isPublished});
+
+  @override
+  State<_AnimatedTrophyIcon> createState() => _AnimatedTrophyIconState();
+}
+
+class _AnimatedTrophyIconState extends State<_AnimatedTrophyIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _translateAnimation;
+  late Animation<Color?> _colorAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
+    _translateAnimation = Tween<double>(begin: 0, end: 20).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+
+    _colorAnimation = ColorTween(begin: LitColors.ash, end: LitColors.amber).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+
+    if (widget.isPublished) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedTrophyIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPublished != oldWidget.isPublished) {
+      if (widget.isPublished) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _translateAnimation.value),
+          child: Icon(
+            Icons.emoji_events,
+            color: _colorAnimation.value,
+            size: 20,
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ResultsScreenState extends ConsumerState<ResultsScreen> {
   bool _loadingStandings = false;
 
@@ -91,6 +163,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                       return ClayCard(
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(14),
+                        borderColor: isPublished ? LitColors.moss.withOpacity(0.4) : null,
                         onTap: () {
                           if (isPublished) {
                             _showResultsStandingsSheet(e);
@@ -121,11 +194,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                                 ],
                               ),
                               alignment: Alignment.center,
-                              child: Icon(
-                                Icons.emoji_events,
-                                color: isPublished ? LitColors.amber : LitColors.ash,
-                                size: 20,
-                              ),
+                              child: _AnimatedTrophyIcon(isPublished: isPublished),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
@@ -144,8 +213,9 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                                   Text(
                                     '${e.category.label} • ${isPublished ? "Results Published" : "Pending Scoring"}',
                                     style: GoogleFonts.plusJakartaSans(
-                                      color: LitColors.ash,
+                                      color: isPublished ? LitColors.moss : LitColors.ash,
                                       fontSize: 11,
+                                      fontWeight: isPublished ? FontWeight.bold : FontWeight.normal,
                                     ),
                                   ),
                                 ],

@@ -61,10 +61,12 @@ final yearlyArchivesProvider = FutureProvider<List<YearlyArchive>>((ref) async {
 });
 
 final _pointsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.eventPoints).stream(primaryKey: ['id']));
+final _resultsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.results).stream(primaryKey: ['id']));
 
 final departmentRankingsProvider = FutureProvider<List<DepartmentRanking>>((ref) async {
-  // Watch points stream to trigger re-calculation
+  // Watch points and results streams to trigger re-calculation
   ref.watch(_pointsStream);
+  ref.watch(_resultsStream);
   
   try {
     // 1. Fetch all manual event points
