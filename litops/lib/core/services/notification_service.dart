@@ -24,7 +24,7 @@ class NotificationService {
     
     // Android initialization
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@drawable/ic_notification');
 
     // iOS initialization
     const DarwinInitializationSettings initializationSettingsIOS =
@@ -37,7 +37,7 @@ class NotificationService {
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsIOS,
-      );
+    );
 
     await _localNotifications.initialize(
       settings: initializationSettings,
@@ -225,7 +225,7 @@ class NotificationService {
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,
-      icon: '@mipmap/ic_launcher',
+      icon: '@drawable/ic_notification',
     );
 
     const NotificationDetails platformChannelSpecifics =
