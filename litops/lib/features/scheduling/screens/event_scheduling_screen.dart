@@ -15,21 +15,34 @@ class EventSchedulingScreen extends ConsumerStatefulWidget {
   const EventSchedulingScreen({super.key});
 
   @override
-  ConsumerState<EventSchedulingScreen> createState() => _EventSchedulingScreenState();
+  ConsumerState<EventSchedulingScreen> createState() =>
+      _EventSchedulingScreenState();
 }
 
-class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> with SingleTickerProviderStateMixin {
+class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   Event? _focusedEvent;
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_handleTabChange);
+  }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging) {
+      setState(() {
+        _currentTabIndex = _tabController.index;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();
   }
@@ -51,11 +64,14 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
           unselectedLabelColor: const Color(0xFF8C857C),
           tabs: const [
             Tab(text: 'Schedules', icon: Icon(Icons.calendar_month_rounded)),
-            Tab(text: 'Staff Assignments', icon: Icon(Icons.assignment_ind_rounded)),
+            Tab(
+                text: 'Staff Assignments',
+                icon: Icon(Icons.assignment_ind_rounded)),
             Tab(text: 'Branch Limits', icon: Icon(Icons.rule_folder_rounded)),
           ],
         ),
       ),
+      extendBody: true,
       backgroundColor: const Color(0xFF0A0A0A),
       body: eventsAsync.when(
         data: (events) {
@@ -84,12 +100,24 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
             ],
           );
         },
-        loading: () => const LoadingView(message: 'Loading operation database...'),
+        loading: () =>
+            const LoadingView(message: 'Loading operation database...'),
         error: (e, _) => ErrorView(
           message: 'Failed to load operation database: $e',
           onRetry: () => ref.invalidate(adminEventsProvider),
         ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _currentTabIndex == 0
+          ? Padding(
+              padding: EdgeInsets.only(bottom: context.r.h(100)),
+              child: FloatingActionButton(
+                onPressed: () => _showScheduleForm(context, eventsAsync.valueOrNull ?? []),
+                backgroundColor: const Color(0xFF6366F1),
+                child: const Icon(Icons.add_rounded, color: Colors.white),
+              ),
+            )
+          : null,
     );
   }
 
@@ -99,43 +127,37 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
   Widget _buildSchedulesTab(List<Event> events) {
     final schedulesAsync = ref.watch(eventSchedulesProvider);
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showScheduleForm(context, events),
-        backgroundColor: const Color(0xFF6366F1),
-        child: const Icon(Icons.add_rounded, color: Colors.white),
-      ),
-      body: schedulesAsync.when(
-        data: (schedules) {
-          if (schedules.isEmpty) {
-            return const EmptyView(
-              icon: Icons.date_range_rounded,
-              title: 'No schedules registered',
-              subtitle: 'Tap the + button to configure dates and venues.',
-            );
-          }
-
-          return ListView.builder(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            itemCount: schedules.length,
-            itemBuilder: (context, index) {
-              final schedule = schedules[index];
-              return _buildScheduleCard(schedule, events);
-            },
+    return schedulesAsync.when(
+      data: (schedules) {
+        if (schedules.isEmpty) {
+          return const EmptyView(
+            icon: Icons.date_range_rounded,
+            title: 'No schedules registered',
+            subtitle: 'Tap the + button to configure dates and venues.',
           );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Text('Error loading schedules: $e', style: const TextStyle(color: Colors.redAccent)),
-        ),
+        }
+
+        return ListView.builder(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: schedules.length,
+          itemBuilder: (context, index) {
+            final schedule = schedules[index];
+            return _buildScheduleCard(schedule, events);
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Text('Error loading schedules: $e',
+            style: const TextStyle(color: Colors.redAccent)),
       ),
     );
   }
 
   Widget _buildScheduleCard(EventSchedule schedule, List<Event> events) {
-    final dateStr = DateFormat('EEE, MMM d, yyyy').format(schedule.scheduleDate);
+    final dateStr =
+        DateFormat('EEE, MMM d, yyyy').format(schedule.scheduleDate);
     final isParallel = schedule.isParallel;
 
     return Container(
@@ -166,9 +188,11 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                       if (isParallel) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                            color:
+                                const Color(0xFFF59E0B).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -186,24 +210,32 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined, color: Colors.white38, size: 14),
+                      const Icon(Icons.location_on_outlined,
+                          color: Colors.white38, size: 14),
                       const SizedBox(width: 4),
-                      Text(schedule.venue, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                      Text(schedule.venue,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12)),
                       const SizedBox(width: 16),
-                      const Icon(Icons.access_time_rounded, color: Colors.white38, size: 14),
+                      const Icon(Icons.access_time_rounded,
+                          color: Colors.white38, size: 14),
                       const SizedBox(width: 4),
                       Text(
                         '${schedule.startTime.substring(0, 5)} - ${schedule.endTime.substring(0, 5)}',
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 12),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_month_outlined, color: Colors.white38, size: 14),
+                      const Icon(Icons.calendar_month_outlined,
+                          color: Colors.white38, size: 14),
                       const SizedBox(width: 4),
-                      Text(dateStr, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                      Text(dateStr,
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 11)),
                     ],
                   ),
                   if (schedule.coordinatorName != null) ...[
@@ -224,10 +256,12 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
               children: [
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, color: Colors.white54),
-                  onPressed: () => _showScheduleForm(context, events, schedule: schedule),
+                  onPressed: () =>
+                      _showScheduleForm(context, events, schedule: schedule),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      color: Colors.redAccent),
                   onPressed: () => _confirmDeleteSchedule(schedule.id),
                 ),
               ],
@@ -260,7 +294,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
     );
   }
 
-  void _showScheduleForm(BuildContext context, List<Event> events, {EventSchedule? schedule}) {
+  void _showScheduleForm(BuildContext context, List<Event> events,
+      {EventSchedule? schedule}) {
     showDialog(
       context: context,
       builder: (context) {
@@ -268,7 +303,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
           backgroundColor: const Color(0xFF131324),
           title: Text(
             schedule != null ? 'Edit Schedule Slot' : 'Create Schedule Slot',
-            style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+            style: GoogleFonts.plusJakartaSans(
+                color: Colors.white, fontWeight: FontWeight.bold),
           ),
           content: SizedBox(
             width: MediaQuery.of(context).size.width * 0.85,
@@ -287,7 +323,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
     final profile = ref.watch(currentProfileProvider);
     final isAuthorized = role.canAssignMembers || profile?.year == 4;
 
-    final assignmentsAsync = ref.watch(eventAssignmentsProvider(_focusedEvent!.id));
+    final assignmentsAsync =
+        ref.watch(eventAssignmentsProvider(_focusedEvent!.id));
     final membersAsync = ref.watch(memberListProvider);
 
     return Padding(
@@ -305,14 +342,17 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
             children: [
               Text(
                 'Assigned Crew members',
-                style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontWeight: FontWeight.bold),
+                style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white70, fontWeight: FontWeight.bold),
               ),
               if (isAuthorized)
                 membersAsync.when(
                   data: (members) => TextButton.icon(
                     onPressed: () => _showAddAssignmentDialog(members),
-                    icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF10B981), size: 16),
-                    label: const Text('Assign Crew', style: TextStyle(color: Color(0xFF10B981))),
+                    icon: const Icon(Icons.person_add_alt_1_rounded,
+                        color: Color(0xFF10B981), size: 16),
+                    label: const Text('Assign Crew',
+                        style: TextStyle(color: Color(0xFF10B981))),
                   ),
                   loading: () => const SizedBox(),
                   error: (_, __) => const SizedBox(),
@@ -329,7 +369,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                   return const EmptyView(
                     icon: Icons.assignment_turned_in_outlined,
                     title: 'No staff assigned yet',
-                    subtitle: 'Coordinators and volunteer handlers will appear here.',
+                    subtitle:
+                        'Coordinators and volunteer handlers will appear here.',
                   );
                 }
 
@@ -338,40 +379,51 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                   itemCount: assignments.length,
                   itemBuilder: (context, index) {
                     final ass = assignments[index];
-                    final memberProfile = ass['profiles'] as Map<String, dynamic>?;
-                    final roleVal = ass['assignment_role'] as String? ?? 'volunteer';
+                    final memberProfile =
+                        ass['profiles'] as Map<String, dynamic>?;
+                    final roleVal =
+                        ass['assignment_role'] as String? ?? 'volunteer';
                     final assignmentRole = AssignmentRole.fromString(roleVal);
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.02),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.04)),
                       ),
                       child: Row(
                         children: [
-                          UserAvatar(name: memberProfile?['full_name'] ?? '?', radius: 18),
+                          UserAvatar(
+                              name: memberProfile?['full_name'] ?? '?',
+                              radius: 18),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  memberProfile?['full_name'] ?? 'Unknown Member',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  memberProfile?['full_name'] ??
+                                      'Unknown Member',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold),
                                 ),
                                 Text(
                                   assignmentRole.label,
-                                  style: const TextStyle(color: Color(0xFF90CAF9), fontSize: 11),
+                                  style: const TextStyle(
+                                      color: Color(0xFF90CAF9), fontSize: 11),
                                 ),
                               ],
                             ),
                           ),
                           if (isAuthorized)
                             IconButton(
-                              icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
+                              icon: const Icon(Icons.remove_circle_outline,
+                                  color: Colors.redAccent, size: 20),
                               onPressed: () => _removeAssignment(ass['id']),
                             ),
                         ],
@@ -381,7 +433,9 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: Colors.redAccent))),
+              error: (e, _) => Center(
+                  child: Text('Error: $e',
+                      style: const TextStyle(color: Colors.redAccent))),
             ),
           ),
         ],
@@ -400,7 +454,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
           backgroundColor: const Color(0xFF131324),
           title: Text(
             'Assign Event Staff',
-            style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+            style: GoogleFonts.plusJakartaSans(
+                color: Colors.white, fontWeight: FontWeight.bold),
           ),
           content: StatefulBuilder(
             builder: (context, setDialogState) {
@@ -408,7 +463,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Member', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('Select Member',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -421,7 +477,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                         value: selectedMember,
                         dropdownColor: const Color(0xFF131324),
                         isExpanded: true,
-                        hint: const Text('Choose Member', style: TextStyle(color: Colors.white30)),
+                        hint: const Text('Choose Member',
+                            style: TextStyle(color: Colors.white30)),
                         style: const TextStyle(color: Colors.white),
                         onChanged: (val) {
                           setDialogState(() {
@@ -438,7 +495,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Assign Role', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('Assign Role',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -475,7 +533,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -490,7 +549,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                         assignedBy: curUser?.id ?? '',
                       );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Staff assigned successfully')),
+                    const SnackBar(
+                        content: Text('Staff assigned successfully')),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -508,7 +568,9 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
 
   Future<void> _removeAssignment(String assignmentId) async {
     try {
-      await ref.read(schedulingControllerProvider).removeAssignment(assignmentId, _focusedEvent!.id);
+      await ref
+          .read(schedulingControllerProvider)
+          .removeAssignment(assignmentId, _focusedEvent!.id);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Assignment removed')),
       );
@@ -523,8 +585,21 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
   // TAB 3: BRANCH CONSTRAINTS
   // ============================================================================
   Widget _buildConstraintsTab(List<Event> events) {
-    final constraintsAsync = ref.watch(eventConstraintsProvider(_focusedEvent!.id));
-    final List<String> branches = ['CS', 'IS', 'CI', 'CB', 'RI', 'EC', 'VL', 'EI', 'EE', 'CV', 'ME'];
+    final constraintsAsync =
+        ref.watch(eventConstraintsProvider(_focusedEvent!.id));
+    final List<String> branches = [
+      'CS',
+      'IS',
+      'CI',
+      'CB',
+      'RI',
+      'EC',
+      'VL',
+      'EI',
+      'EE',
+      'CV',
+      'ME'
+    ];
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -533,23 +608,24 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
         children: [
           _buildFocusedEventHeader(events),
           const SizedBox(height: 16),
-
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Branch Participation Limits',
-                style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontWeight: FontWeight.bold),
+                style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white70, fontWeight: FontWeight.bold),
               ),
               TextButton.icon(
                 onPressed: () => _showAddConstraintDialog(branches),
-                icon: const Icon(Icons.add_moderator_rounded, color: Color(0xFF10B981), size: 16),
-                label: const Text('Add Rule', style: TextStyle(color: Color(0xFF10B981))),
+                icon: const Icon(Icons.add_moderator_rounded,
+                    color: Color(0xFF10B981), size: 16),
+                label: const Text('Add Rule',
+                    style: TextStyle(color: Color(0xFF10B981))),
               ),
             ],
           ),
           const SizedBox(height: 10),
-
           Expanded(
             child: constraintsAsync.when(
               data: (constraints) {
@@ -557,7 +633,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                   return const EmptyView(
                     icon: Icons.rule_rounded,
                     title: 'No branch constraints set',
-                    subtitle: 'Registrations are currently unrestricted by department limits.',
+                    subtitle:
+                        'Registrations are currently unrestricted by department limits.',
                   );
                 }
 
@@ -569,11 +646,13 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.02),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.04)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -581,9 +660,11 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                  color: const Color(0xFFF59E0B)
+                                      .withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
@@ -597,12 +678,15 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                               const SizedBox(width: 16),
                               Text(
                                 'Max Limit: ${c.maxParticipants}',
-                                style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.redAccent),
                             onPressed: () => _deleteConstraint(c.id),
                           ),
                         ],
@@ -612,7 +696,9 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: Colors.redAccent))),
+              error: (e, _) => Center(
+                  child: Text('Error: $e',
+                      style: const TextStyle(color: Colors.redAccent))),
             ),
           ),
         ],
@@ -631,13 +717,15 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
           backgroundColor: const Color(0xFF131324),
           title: Text(
             'Add Branch Limit',
-            style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+            style: GoogleFonts.plusJakartaSans(
+                color: Colors.white, fontWeight: FontWeight.bold),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Select Branch', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              const Text('Select Branch',
+                  style: TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -654,12 +742,15 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                     onChanged: (val) {
                       if (val != null) selectedBranch = val;
                     },
-                    items: branches.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+                    items: branches
+                        .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                        .toList(),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              const Text('Maximum Participants limit', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              const Text('Maximum Participants limit',
+                  style: TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 8),
               TextField(
                 controller: limitCtrl,
@@ -667,10 +758,12 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   hintText: 'e.g. 15',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+                  hintStyle:
+                      TextStyle(color: Colors.white.withValues(alpha: 0.4)),
                   filled: true,
                   fillColor: Colors.white.withValues(alpha: 0.05),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ],
@@ -678,7 +771,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -687,13 +781,16 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                 Navigator.pop(context);
 
                 try {
-                  await ref.read(schedulingControllerProvider).saveParticipationConstraint(
+                  await ref
+                      .read(schedulingControllerProvider)
+                      .saveParticipationConstraint(
                         eventId: _focusedEvent!.id,
                         branch: selectedBranch,
                         maxParticipants: limit,
                       );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Branch limit saved successfully')),
+                    const SnackBar(
+                        content: Text('Branch limit saved successfully')),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -711,7 +808,9 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
 
   Future<void> _deleteConstraint(String id) async {
     try {
-      await ref.read(schedulingControllerProvider).deleteParticipationConstraint(id, _focusedEvent!.id);
+      await ref
+          .read(schedulingControllerProvider)
+          .deleteParticipationConstraint(id, _focusedEvent!.id);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Branch limit deleted')),
       );
@@ -742,7 +841,10 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
               children: [
                 const Text(
                   'Managing Configurations For:',
-                  style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -759,7 +861,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
           ),
           TextButton(
             onPressed: () => _showFocusedEventPicker(events),
-            child: const Text('Switch Event', style: TextStyle(color: Color(0xFF6366F1))),
+            child: const Text('Switch Event',
+                style: TextStyle(color: Color(0xFF6366F1))),
           ),
         ],
       ),
@@ -772,7 +875,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF131324),
-          title: const Text('Choose Focused Event', style: TextStyle(color: Colors.white)),
+          title: const Text('Choose Focused Event',
+              style: TextStyle(color: Colors.white)),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView.builder(
@@ -787,10 +891,14 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen> w
                     });
                     Navigator.pop(context);
                   },
-                  title: Text(e.name, style: const TextStyle(color: Colors.white)),
-                  subtitle: Text(e.category.label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                  title:
+                      Text(e.name, style: const TextStyle(color: Colors.white)),
+                  subtitle: Text(e.category.label,
+                      style:
+                          const TextStyle(color: Colors.white38, fontSize: 11)),
                   trailing: _focusedEvent!.id == e.id
-                      ? const Icon(Icons.check_circle_rounded, color: Color(0xFF6366F1))
+                      ? const Icon(Icons.check_circle_rounded,
+                          color: Color(0xFF6366F1))
                       : null,
                 );
               },
@@ -815,7 +923,7 @@ class _ScheduleForm extends ConsumerStatefulWidget {
 
 class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
   final _formKey = GlobalKey<FormState>();
-  
+
   late Event _selectedEvent;
   late DateTime _selectedDate;
   final _startTimeCtrl = TextEditingController();
@@ -826,16 +934,17 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
   final _volunteersCtrl = TextEditingController();
   ClubMember? _selectedCoordinator;
   final _notesCtrl = TextEditingController();
-  
+
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    
+
     if (widget.schedule != null) {
       final s = widget.schedule!;
-      _selectedEvent = widget.events.firstWhere((e) => e.id == s.eventId, orElse: () => widget.events.first);
+      _selectedEvent = widget.events.firstWhere((e) => e.id == s.eventId,
+          orElse: () => widget.events.first);
       _selectedDate = s.scheduleDate;
       _startTimeCtrl.text = s.startTime.substring(0, 5);
       _endTimeCtrl.text = s.endTime.substring(0, 5);
@@ -874,7 +983,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
         shrinkWrap: true,
         children: [
           // Event
-          const Text('Event', style: TextStyle(color: Colors.white60, fontSize: 12)),
+          const Text('Event',
+              style: TextStyle(color: Colors.white60, fontSize: 12)),
           const SizedBox(height: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -891,7 +1001,9 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedEvent = val);
                 },
-                items: widget.events.map((e) => DropdownMenuItem(value: e, child: Text(e.name))).toList(),
+                items: widget.events
+                    .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
+                    .toList(),
               ),
             ),
           ),
@@ -919,7 +1031,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                     });
                   }
                 },
-                child: const Text('Change Date', style: TextStyle(color: Color(0xFF6366F1))),
+                child: const Text('Change Date',
+                    style: TextStyle(color: Color(0xFF6366F1))),
               ),
             ],
           ),
@@ -932,18 +1045,21 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Start Time', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                    const Text('Start Time',
+                        style: TextStyle(color: Colors.white60, fontSize: 11)),
                     const SizedBox(height: 6),
                     TextFormField(
                       controller: _startTimeCtrl,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: 'HH:MM',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                        hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.3)),
                         filled: true,
                         fillColor: Colors.white.withValues(alpha: 0.04),
                       ),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
                     ),
                   ],
                 ),
@@ -953,18 +1069,21 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('End Time', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                    const Text('End Time',
+                        style: TextStyle(color: Colors.white60, fontSize: 11)),
                     const SizedBox(height: 6),
                     TextFormField(
                       controller: _endTimeCtrl,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: 'HH:MM',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                        hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.3)),
                         filled: true,
                         fillColor: Colors.white.withValues(alpha: 0.04),
                       ),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
                     ),
                   ],
                 ),
@@ -974,7 +1093,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
           const SizedBox(height: 12),
 
           // Venue
-          const Text('Venue', style: TextStyle(color: Colors.white60, fontSize: 11)),
+          const Text('Venue',
+              style: TextStyle(color: Colors.white60, fontSize: 11)),
           const SizedBox(height: 6),
           TextFormField(
             controller: _venueCtrl,
@@ -985,17 +1105,20 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
               filled: true,
               fillColor: Colors.white.withValues(alpha: 0.04),
             ),
-            validator: (v) => v == null || v.trim().isEmpty ? 'Enter venue' : null,
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Enter venue' : null,
           ),
           const SizedBox(height: 12),
 
           // Coordinator
-          const Text('Event Coordinator', style: TextStyle(color: Colors.white60, fontSize: 11)),
+          const Text('Event Coordinator',
+              style: TextStyle(color: Colors.white60, fontSize: 11)),
           const SizedBox(height: 6),
           membersAsync.when(
             data: (members) {
               // Try to resolve current selection
-              if (widget.schedule?.coordinatorId != null && _selectedCoordinator == null) {
+              if (widget.schedule?.coordinatorId != null &&
+                  _selectedCoordinator == null) {
                 _selectedCoordinator = members.firstWhere(
                   (m) => m.userId == widget.schedule!.coordinatorId,
                   orElse: () => members.first,
@@ -1012,7 +1135,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                     value: _selectedCoordinator,
                     dropdownColor: const Color(0xFF131324),
                     isExpanded: true,
-                    hint: const Text('Select coordinator (Optional)', style: TextStyle(color: Colors.white30)),
+                    hint: const Text('Select coordinator (Optional)',
+                        style: TextStyle(color: Colors.white30)),
                     style: const TextStyle(color: Colors.white),
                     onChanged: (val) {
                       setState(() {
@@ -1021,7 +1145,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                     },
                     items: [
                       const DropdownMenuItem(value: null, child: Text('None')),
-                      ...members.map((m) => DropdownMenuItem(value: m, child: Text(m.memberName ?? 'Unknown'))),
+                      ...members.map((m) => DropdownMenuItem(
+                          value: m, child: Text(m.memberName ?? 'Unknown'))),
                     ],
                   ),
                 ),
@@ -1033,7 +1158,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
           const SizedBox(height: 12),
 
           // Volunteer count
-          const Text('Required Volunteer Count', style: TextStyle(color: Colors.white60, fontSize: 11)),
+          const Text('Required Volunteer Count',
+              style: TextStyle(color: Colors.white60, fontSize: 11)),
           const SizedBox(height: 6),
           TextFormField(
             controller: _volunteersCtrl,
@@ -1048,8 +1174,10 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
 
           // Parallel Scheduling Toggle
           SwitchListTile(
-            title: const Text('Parallel Event Scheduling', style: TextStyle(color: Colors.white, fontSize: 13)),
-            subtitle: const Text('Bypasses automated venue booking conflicts', style: TextStyle(color: Colors.white38, fontSize: 11)),
+            title: const Text('Parallel Event Scheduling',
+                style: TextStyle(color: Colors.white, fontSize: 13)),
+            subtitle: const Text('Bypasses automated venue booking conflicts',
+                style: TextStyle(color: Colors.white38, fontSize: 11)),
             value: _isParallel,
             activeThumbColor: const Color(0xFF6366F1),
             onChanged: (val) {
@@ -1061,14 +1189,16 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
           ),
           if (_isParallel) ...[
             const SizedBox(height: 12),
-            const Text('Parallel Group Name', style: TextStyle(color: Colors.white60, fontSize: 11)),
+            const Text('Parallel Group Name',
+                style: TextStyle(color: Colors.white60, fontSize: 11)),
             const SizedBox(height: 6),
             TextFormField(
               controller: _parallelGroupCtrl,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'e.g. Group A',
-                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                hintStyle:
+                    TextStyle(color: Colors.white.withValues(alpha: 0.3)),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.04),
               ),
@@ -1077,7 +1207,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
           const SizedBox(height: 12),
 
           // Notes
-          const Text('Scheduling Notes', style: TextStyle(color: Colors.white60, fontSize: 11)),
+          const Text('Scheduling Notes',
+              style: TextStyle(color: Colors.white60, fontSize: 11)),
           const SizedBox(height: 6),
           TextFormField(
             controller: _notesCtrl,
@@ -1097,12 +1228,14 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                 : () async {
                     if (!_formKey.currentState!.validate()) return;
                     setState(() => _isSaving = true);
-                    
+
                     try {
                       final curUser = ref.read(currentProfileProvider);
                       final createdBy = curUser?.id ?? '';
 
-                      await ref.read(schedulingControllerProvider).saveEventSchedule(
+                      await ref
+                          .read(schedulingControllerProvider)
+                          .saveEventSchedule(
                             id: widget.schedule?.id,
                             eventId: _selectedEvent.id,
                             scheduleDate: _selectedDate,
@@ -1110,8 +1243,11 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
                             endTime: '${_endTimeCtrl.text}:00',
                             venue: _venueCtrl.text.trim(),
                             isParallel: _isParallel,
-                            parallelGroup: _isParallel ? _parallelGroupCtrl.text.trim() : null,
-                            volunteerCount: int.tryParse(_volunteersCtrl.text) ?? 0,
+                            parallelGroup: _isParallel
+                                ? _parallelGroupCtrl.text.trim()
+                                : null,
+                            volunteerCount:
+                                int.tryParse(_volunteersCtrl.text) ?? 0,
                             coordinatorId: _selectedCoordinator?.userId,
                             notes: _notesCtrl.text.trim(),
                             createdBy: createdBy,
@@ -1119,22 +1255,28 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
 
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Schedule slot saved successfully')),
+                        const SnackBar(
+                            content: Text('Schedule slot saved successfully')),
                       );
                     } catch (e) {
                       setState(() => _isSaving = false);
                       String errMessage = e.toString();
                       if (errMessage.contains('Venue conflict detected')) {
-                        _showConflictDialog(errMessage.replaceAll('Exception: ', ''));
+                        _showConflictDialog(
+                            errMessage.replaceAll('Exception: ', ''));
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to save schedule: $e')),
+                          SnackBar(
+                              content: Text('Failed to save schedule: $e')),
                         );
                       }
                     }
                   },
             child: _isSaving
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('Save Slot'),
           ),
         ],
@@ -1162,7 +1304,8 @@ class _ScheduleFormState extends ConsumerState<_ScheduleForm> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Acknowledge', style: TextStyle(color: Colors.white70)),
+              child: const Text('Acknowledge',
+                  style: TextStyle(color: Colors.white70)),
             ),
           ],
         );

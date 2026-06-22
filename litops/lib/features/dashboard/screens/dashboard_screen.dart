@@ -75,23 +75,34 @@ final dashboardStatsProvider = FutureProvider<Map<String, int>>((ref) async {
   ref.watch(_eventsStream);
 
   try {
-    final client = SupabaseConfig.client;
-    final eventsRes = await client.from(SupabaseTables.events).select('id');
-    final registrationsRes = await client.from(SupabaseTables.registrations).select('student_id').eq('is_cancelled', false);
-    final attendanceRes = await client.from(SupabaseTables.attendance).select('id');
-    final membersRes = await client.from(SupabaseTables.profiles).select('id').eq('is_active', true);
-
-    final events = (eventsRes as List).length;
-    final uniqueRegisteredStudents = (registrationsRes as List).map((r) => r['student_id']).toSet().length;
-    final att = (attendanceRes as List).length;
+    final activeArchive = await ref.watch(activeYearlyArchiveProvider.future);
+    final membersRes = await SupabaseConfig.client.from(SupabaseTables.profiles).select('id').eq('is_active', true);
     final membersCount = (membersRes as List).length;
 
-    return {
-      'events': events,
-      'registrations': uniqueRegisteredStudents > 0 ? uniqueRegisteredStudents : 1,
-      'attendance': att,
-      'students': membersCount,
-    };
+    if (activeArchive != null) {
+      return {
+        'events': activeArchive.totalEvents,
+        'registrations': activeArchive.totalRegistrations > 0 ? activeArchive.totalRegistrations : 1,
+        'attendance': activeArchive.totalAttendance,
+        'students': membersCount,
+      };
+    } else {
+      // Fall back to counting all if no active archive exists
+      final eventsRes = await SupabaseConfig.client.from(SupabaseTables.events).select('id');
+      final registrationsRes = await SupabaseConfig.client.from(SupabaseTables.registrations).select('student_id').eq('is_cancelled', false);
+      final attendanceRes = await SupabaseConfig.client.from(SupabaseTables.attendance).select('id');
+
+      final events = (eventsRes as List).length;
+      final uniqueRegisteredStudents = (registrationsRes as List).map((r) => r['student_id']).toSet().length;
+      final att = (attendanceRes as List).length;
+
+      return {
+        'events': events,
+        'registrations': uniqueRegisteredStudents > 0 ? uniqueRegisteredStudents : 1,
+        'attendance': att,
+        'students': membersCount,
+      };
+    }
   } catch (_) {
     return {
       'events': 12,

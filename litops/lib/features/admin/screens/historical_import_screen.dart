@@ -39,13 +39,13 @@ class _HistoricalImportScreenState extends ConsumerState<HistoricalImportScreen>
   void _loadSampleData() {
     const sampleCsv = 
         'usn,name,branch,year,points\n'
-        '4MC23CS001,Abhishek Kumar,CS,2026,10\n'
-        '4MC23CS042,Bhoomika R,CS,2026,7\n'
-        '4MC23IS015,Darshan Gowda,IS,2026,5\n'
-        '4MC23EC008,Deepika Sen,EC,2026,0\n'
-        '4MC23ME099,Chethan M,ME,2026,10\n'
-        '4MC23CS999,Invalid Branch Student,XYZ,2026,0\n' // invalid branch
-        '4MC23CS001,Abhishek Kumar,CS,2026,10'; // duplicate USN
+        '4MC23CS001,Abhishek Kumar,CS,3,10\n'
+        '4MC23CS042,Bhoomika R,CS,2,7\n'
+        '4MC23IS015,Darshan Gowda,IS,3,5\n'
+        '4MC23EC008,Deepika Sen,EC,4,0\n'
+        '4MC23ME099,Chethan M,ME,1,10\n'
+        '4MC23CS999,Invalid Branch Student,XYZ,2,0\n' // invalid branch
+        '4MC23CS001,Abhishek Kumar,CS,3,10'; // duplicate USN
 
     setState(() {
       _yearCtrl.text = '2026';

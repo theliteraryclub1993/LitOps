@@ -238,7 +238,7 @@ class Student {
       name: json['name'] as String,
       branch: json['branch'] as String,
       year: json['year'] as int,
-      section: json['section'] as String?,
+      section: json.containsKey('section') ? (json['section'] as String?) : null,
       phone: json['phone'] as String?,
       email: json['email'] as String?,
       gender: json['gender'] as String?,

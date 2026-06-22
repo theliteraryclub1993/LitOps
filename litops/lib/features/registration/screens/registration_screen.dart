@@ -144,18 +144,63 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
     final searchUsn = usn.trim().toUpperCase();
 
     try {
-      final data = await SupabaseConfig.client
+      // First try student_master
+      final studentData = await SupabaseConfig.client
           .from(SupabaseTables.studentMaster)
           .select()
           .ilike('usn', searchUsn)
           .eq('status', 'active')
           .maybeSingle();
-          
-      if (data != null) {
-        final student = Student.fromJson(data);
+
+      Student? student;
+      if (studentData != null) {
+        student = Student.fromJson(studentData);
+      } else {
+        // Try profiles table for club members
+        final profileData = await SupabaseConfig.client
+            .from(SupabaseTables.profiles)
+            .select()
+            .ilike('usn', searchUsn)
+            .maybeSingle();
         
+        if (profileData != null) {
+          final profile = Profile.fromJson(profileData);
+          // Try to insert, if duplicate key exists, just fetch existing student
+          try {
+            final studentInsertData = <String, dynamic>{
+              'usn': profile.usn ?? searchUsn,
+              'name': profile.fullName,
+              'branch': profile.branch ?? 'CS',
+              'year': profile.year ?? 1,
+              'phone': profile.phone,
+              'email': profile.email,
+              'status': 'active',
+            };
+            final newStudentRows = await SupabaseConfig.client
+                .from(SupabaseTables.studentMaster)
+                .insert(studentInsertData)
+                .select();
+            if (newStudentRows.isNotEmpty) {
+              student = Student.fromJson(newStudentRows[0]);
+            }
+          } catch (e) {
+            // Duplicate key error, fetch the existing student
+            final existingStudentData = await SupabaseConfig.client
+                .from(SupabaseTables.studentMaster)
+                .select()
+                .ilike('usn', searchUsn)
+                .eq('status', 'active')
+                .maybeSingle();
+            if (existingStudentData != null) {
+              student = Student.fromJson(existingStudentData);
+            }
+          }
+        }
+      }
+          
+      if (student != null) {
         // Check if student is already added in another slot for this team
-        if (_participants.any((p) => p?.id == student.id)) {
+        if (_participants.any((p) => p?.id == student!.id)) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -167,20 +212,20 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
           _clearStudentForm();
         } else {
           // Pre-fill the form with existing student details
-          _usnController.text = student.usn;
-          _nameController.text = student.name;
-          _phoneController.text = student.phone ?? '';
-          _emailController.text = student.email ?? '';
+          _usnController.text = student!.usn;
+          _nameController.text = student!.name;
+          _phoneController.text = student!.phone ?? '';
+          _emailController.text = student!.email ?? '';
           setState(() {
-            _branch = _branches.contains(student.branch.toUpperCase()) ? student.branch.toUpperCase() : _branches.first;
-            _year = student.year;
-            _section = student.section ?? 'A';
+            _branch = _branches.contains(student!.branch.toUpperCase()) ? student!.branch.toUpperCase() : _branches.first;
+            _year = student!.year;
+            _section = student!.section ?? 'A';
             _isNewStudent = false;
           });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Found student: ${student.name}. Details auto-filled!'),
+                content: Text('Found student: ${student!.name}. Details auto-filled!'),
                 backgroundColor: LitColors.moss,
                 duration: const Duration(seconds: 2),
               ),
@@ -532,8 +577,14 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
   @override
   Widget build(BuildContext context) {
     final role = ref.watch(currentUserRoleProvider);
+    final profile = ref.watch(currentProfileProvider);
     
-    if (!role.canRegisterParticipants && !role.canManualEntry) {
+    // Allow access if:
+    // 1. User has canRegisterParticipants or canManualEntry
+    // 2. Or user is in 1st, 2nd, 3rd, or 4th year (any year)
+    final year = profile?.year;
+    final isAllowed = role.canRegisterParticipants || role.canManualEntry || (year != null && year >= 1 && year <= 4);
+    if (!isAllowed) {
       return const Scaffold(
         backgroundColor: LitColors.void_,
         body: EmptyView(

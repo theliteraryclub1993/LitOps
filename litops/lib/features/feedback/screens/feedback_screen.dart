@@ -98,6 +98,7 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
 
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: LitColors.clay,
       shape: const RoundedRectangleBorder(
@@ -105,9 +106,10 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) {
+          final r = Responsive(ctx);
           return Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + r.bottomSafeArea + 24,
               top: 24,
               left: 24,
               right: 24,
@@ -513,7 +515,12 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
                 : _feedback.isEmpty
                     ? const EmptyView(icon: Icons.feedback_outlined, title: 'No feedback yet')
                     : ListView.builder(
-                        padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 130),
+                        padding: EdgeInsets.only(
+                          left: 16,
+                          right: 16,
+                          top: 8,
+                          bottom: context.r.listBottomPadding,
+                        ),
                         itemCount: _feedback.length,
                         itemBuilder: (ctx, i) {
                           final f = _feedback[i];
@@ -559,7 +566,7 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
         ],
       ),
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 120, right: 8),
+        padding: EdgeInsets.only(bottom: context.r.bottomSpacing(), right: context.r.w(8)),
         child: ClayButton(
           width: 140,
           height: 48,

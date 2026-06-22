@@ -63,12 +63,28 @@ final auditLogsProvider = FutureProvider<List<AuditExtended>>((ref) async {
   return (data as List).map((e) => AuditExtended.fromJson(e)).toList();
 });
 
+final _yearlyArchivesStream = StreamProvider((ref) => 
+  SupabaseConfig.client.from(SupabaseTables.yearlyArchives).stream(primaryKey: ['id'])
+);
+
 final yearlyArchivesProvider = FutureProvider<List<YearlyArchive>>((ref) async {
+  ref.watch(_yearlyArchivesStream);
   final data = await SupabaseConfig.client
       .from(SupabaseTables.yearlyArchives)
       .select()
       .order('fest_year', ascending: false);
   return (data as List).map((e) => YearlyArchive.fromJson(e)).toList();
+});
+
+final activeYearlyArchiveProvider = FutureProvider<YearlyArchive?>((ref) async {
+  ref.watch(_yearlyArchivesStream);
+  final data = await SupabaseConfig.client
+      .from(SupabaseTables.yearlyArchives)
+      .select()
+      .eq('is_active', true)
+      .maybeSingle();
+  if (data == null) return null;
+  return YearlyArchive.fromJson(data);
 });
 
 final _pointsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.eventPoints).stream(primaryKey: ['id']));

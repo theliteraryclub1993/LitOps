@@ -391,7 +391,7 @@ class ProfileScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 130),
+            SizedBox(height: r.listBottomPadding),
           ],
         ),
       ),
@@ -635,6 +635,7 @@ class ProfileScreen extends ConsumerWidget {
     final ImagePicker picker = ImagePicker();
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: LitColors.clay,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

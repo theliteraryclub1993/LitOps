@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 /// Responsive utility for scaling UI elements based on screen size.
 ///
@@ -21,17 +22,54 @@ class Responsive {
   final double screenWidth;
   final double screenHeight;
   final double textScaleFactor;
+  final double bottomSafeArea;
+  final bool hasNavbar;
 
-  Responsive._(this.screenWidth, this.screenHeight, this.textScaleFactor);
+  Responsive._({
+    required this.screenWidth,
+    required this.screenHeight,
+    required this.textScaleFactor,
+    required this.bottomSafeArea,
+    required this.hasNavbar,
+  });
 
   factory Responsive(BuildContext context) {
     final mq = MediaQuery.of(context);
+    bool hasNavbar = false;
+    try {
+      final state = GoRouterState.of(context);
+      hasNavbar = routesWithNavbar.contains(state.matchedLocation);
+    } catch (_) {}
+
     return Responsive._(
-      mq.size.width,
-      mq.size.height,
-      mq.textScaler.scale(1.0),
+      screenWidth: mq.size.width,
+      screenHeight: mq.size.height,
+      textScaleFactor: mq.textScaler.scale(1.0),
+      bottomSafeArea: mq.padding.bottom,
+      hasNavbar: hasNavbar,
     );
   }
+
+  static const Set<String> routesWithNavbar = {
+    '/dashboard',
+    '/events',
+    '/leaderboard',
+    '/profile',
+    '/students',
+    '/registration',
+    '/attendance',
+    '/assignments',
+    '/results',
+    '/rounds',
+    '/certificates',
+    '/feedback',
+    '/appeals',
+    '/analytics',
+    '/settings',
+    '/admin',
+    '/rulebook/view',
+    '/scheduling',
+  };
 
   // ── Scale Factors ────────────────────────────────────────────────────
 
@@ -89,8 +127,25 @@ class Responsive {
   /// Horizontal padding that adapts to screen width.
   double get pagePadding => w(16);
 
+  /// The height of the custom floating bottom navigation bar.
+  double get navbarHeight => h(72);
+
+  /// The bottom margin of the custom floating bottom navigation bar.
+  double get navbarMargin => h(24);
+
+  /// Dynamically calculates bottom spacing required to fully clear either
+  /// the custom floating bottom navigation bar or the system safe area.
+  double bottomSpacing({double extra = 16.0, bool? forceNavbar}) {
+    final useNavbar = forceNavbar ?? hasNavbar;
+    if (useNavbar) {
+      return navbarHeight + navbarMargin + bottomSafeArea + h(extra);
+    } else {
+      return bottomSafeArea + h(extra);
+    }
+  }
+
   /// Bottom padding for lists that accounts for the floating navbar.
-  double get listBottomPadding => h(130);
+  double get listBottomPadding => bottomSpacing();
 
   /// Responsive EdgeInsets for page content.
   EdgeInsets get pageInsets => EdgeInsets.symmetric(

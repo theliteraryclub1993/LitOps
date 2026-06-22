@@ -128,13 +128,8 @@ class ImportService {
       }
 
       final year = int.tryParse(rowYearStr);
-      if (year == null || year < 2020 || year > 2099) {
-        errors.add('Row ${i + 1}: Invalid year ($rowYearStr). Must be between 2020 and 2099.');
-        continue;
-      }
-
-      if (year != expectedYear) {
-        errors.add('Row ${i + 1}: Year mismatch. Expected $expectedYear, found $year.');
+      if (year == null || year < 1 || year > 4) {
+        errors.add('Row ${i + 1}: Invalid year ($rowYearStr). Must be between 1 and 4 (study year).');
         continue;
       }
 
@@ -269,13 +264,8 @@ class ImportService {
       }
 
       final year = int.tryParse(rowYearStr);
-      if (year == null || year < 2020 || year > 2099) {
-        errors.add('Row ${i + 1}: Invalid year ($rowYearStr).');
-        continue;
-      }
-
-      if (year != expectedYear) {
-        errors.add('Row ${i + 1}: Year mismatch. Expected $expectedYear, found $year.');
+      if (year == null || year < 1 || year > 4) {
+        errors.add('Row ${i + 1}: Invalid year ($rowYearStr). Must be between 1 and 4 (study year).');
         continue;
       }
 

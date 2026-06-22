@@ -108,17 +108,63 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     final searchUsn = usn.trim().toUpperCase();
 
     try {
-      final data = await SupabaseConfig.client
+      // First try student_master
+      final studentData = await SupabaseConfig.client
           .from(SupabaseTables.studentMaster)
           .select()
           .ilike('usn', searchUsn)
           .eq('status', 'active')
           .maybeSingle();
 
-      if (data != null) {
-        final student = Student.fromJson(data);
+      Student? student;
+      if (studentData != null) {
+        student = Student.fromJson(studentData);
+      } else {
+        // Try profiles table for club members
+        final profileData = await SupabaseConfig.client
+            .from(SupabaseTables.profiles)
+            .select()
+            .ilike('usn', searchUsn)
+            .maybeSingle();
+        
+        if (profileData != null) {
+          final profile = Profile.fromJson(profileData);
+          // Try to insert, if duplicate key exists, just fetch existing student
+          try {
+            final studentInsertData = <String, dynamic>{
+              'usn': profile.usn ?? searchUsn,
+              'name': profile.fullName,
+              'branch': profile.branch ?? 'CS',
+              'year': profile.year ?? 1,
+              'phone': profile.phone,
+              'email': profile.email,
+              'status': 'active',
+            };
+            final newStudentRows = await SupabaseConfig.client
+                .from(SupabaseTables.studentMaster)
+                .insert(studentInsertData)
+                .select();
+            if (newStudentRows.isNotEmpty) {
+              student = Student.fromJson(newStudentRows[0]);
+            }
+          } catch (e) {
+            // Duplicate key error, fetch the existing student
+            final existingStudentData = await SupabaseConfig.client
+                .from(SupabaseTables.studentMaster)
+                .select()
+                .ilike('usn', searchUsn)
+                .eq('status', 'active')
+                .maybeSingle();
+            if (existingStudentData != null) {
+              student = Student.fromJson(existingStudentData);
+            }
+          }
+        }
+      }
+
+      if (student != null) {
         // Check if already in slots
-        if (_participants.any((p) => p?.id == student.id)) {
+        if (_participants.any((p) => p?.id == student!.id)) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                 content: Text('Student is already in the participant list'),

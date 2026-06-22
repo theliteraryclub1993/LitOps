@@ -70,6 +70,7 @@ class _AppealsScreenState extends ConsumerState<AppealsScreen> {
 
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1D1A18), // clay
       shape: const RoundedRectangleBorder(
@@ -77,9 +78,10 @@ class _AppealsScreenState extends ConsumerState<AppealsScreen> {
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) {
+          final r = Responsive(ctx);
           return Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + r.bottomSafeArea + 24,
               top: 24,
               left: 24,
               right: 24,
@@ -345,7 +347,7 @@ class _AppealsScreenState extends ConsumerState<AppealsScreen> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 130),
+                        padding: EdgeInsets.only(left: 16, right: 16, top: 12, bottom: context.r.listBottomPadding),
                         child: InkWell(
                           onTap: _showRaiseAppealSheet,
                           borderRadius: BorderRadius.circular(16),

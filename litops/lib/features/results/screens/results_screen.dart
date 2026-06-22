@@ -138,6 +138,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
   void _showResultsStandingsSheet(Event event) {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
@@ -271,7 +272,7 @@ class _ResultsStandingsSheet extends ConsumerWidget {
     return ClayCard(
       color: LitColors.clay,
       borderRadius: r.radius(24),
-      padding: EdgeInsets.symmetric(horizontal: r.w(20), vertical: r.h(24)),
+      padding: EdgeInsets.fromLTRB(r.w(20), r.h(24), r.w(20), r.h(24) + r.bottomSafeArea),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

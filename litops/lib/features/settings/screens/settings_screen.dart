@@ -39,7 +39,7 @@ class SettingsScreen extends ConsumerWidget {
           left: r.w(16),
           right: r.w(16),
           top: r.h(16),
-          bottom: r.h(130),
+          bottom: r.listBottomPadding,
         ),
         children: [
           // Profile Section
@@ -329,6 +329,7 @@ class SettingsScreen extends ConsumerWidget {
 
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _NotificationsSheet(userId: userId),
@@ -464,7 +465,7 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
                         title: "You're all caught up!",
                       )
                     : ListView.separated(
-                        padding: EdgeInsets.all(r.w(24)),
+                        padding: EdgeInsets.fromLTRB(r.w(24), r.w(24), r.w(24), r.w(24) + r.bottomSafeArea),
                         itemCount: _notifications.length,
                         separatorBuilder: (_, __) => SizedBox(height: r.h(16)),
                         itemBuilder: (context, index) {

@@ -68,6 +68,8 @@ class EventDetailScreen extends ConsumerWidget {
     final attCountAsync = ref.watch(eventAttendanceCountProvider(eventId));
     final role = ref.watch(currentUserRoleProvider);
     final profile = ref.watch(currentProfileProvider);
+    final year = profile?.year;
+    final isAllowedToRegister = role.canRegisterParticipants || (year != null && year >= 1 && year <=4);
 
     return Scaffold(
       backgroundColor: LitColors.void_,
@@ -228,10 +230,11 @@ class EventDetailScreen extends ConsumerWidget {
                                 onTap: () async {
                                   final newStatus = await showModalBottomSheet<EventStatus>(
                                     context: context,
+                                    useRootNavigator: true,
                                     backgroundColor: Colors.transparent,
                                     builder: (ctx) => ClayCard(
                                       color: LitColors.clay,
-                                      padding: EdgeInsets.all(context.r.w(16)),
+                                      padding: EdgeInsets.fromLTRB(context.r.w(16), context.r.h(16), context.r.w(16), context.r.h(16) + context.r.bottomSafeArea),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
@@ -420,7 +423,7 @@ class EventDetailScreen extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (role.canRegisterParticipants) ...[
+                      if (isAllowedToRegister) ...[
                         ClayButton(
                           onPressed: () => context.go('/registration', extra: event),
                           child: Row(

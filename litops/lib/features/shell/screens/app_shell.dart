@@ -14,25 +14,7 @@ class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.child});
 
   // List of EXACT routes that should show the bottom navigation bar
-  static const Set<String> routesWithNavbar = {
-    '/dashboard',
-    '/events',
-    '/leaderboard',
-    '/profile',
-    '/students',
-    '/registration',
-    '/attendance',
-    '/assignments',
-    '/results',
-    '/rounds',
-    '/certificates',
-    '/feedback',
-    '/appeals',
-    '/analytics',
-    '/settings',
-    '/admin',
-    '/rulebook/view',
-  };
+  static const Set<String> routesWithNavbar = Responsive.routesWithNavbar;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -119,6 +101,8 @@ class AppShell extends ConsumerWidget {
       }
     }
 
+    final isScheduling = currentLocation == '/scheduling';
+    
     return Scaffold(
       backgroundColor: LitColors.void_,
       body: Stack(
