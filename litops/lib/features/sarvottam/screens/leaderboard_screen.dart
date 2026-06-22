@@ -221,267 +221,62 @@ class LeaderboardScreen extends ConsumerWidget {
           final maxPoints = departments.first.totalPoints;
           final maxPointsVal = maxPoints > 0 ? maxPoints : 1;
 
+          final itemCount = 3 + departments.length; // header + legend + list + bottom
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(leaderboardProvider),
             color: LitColors.ember,
             backgroundColor: LitColors.clay,
-            child: ListView(
+            child: ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              children: [
-                // Header section
-                const SizedBox(height: 12),
-                Center(
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.emoji_events_rounded,
-                        size: 48,
-                        color: LitColors.ember,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Sarvottam Trophy',
-                        style: GoogleFonts.fredoka(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: LitColors.bone,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Live branch standings',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: LitColors.ash,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Points System Legend Chips
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    _buildLegendChip('Winner 10'),
-                    _buildLegendChip('Runner-Up 7'),
-                    _buildLegendChip('2nd RU 5'),
-                    _buildLegendChip('Participation 1'),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // List of department cards with detailed tables
-                ...departments.map((dept) {
-                  final isUserBranch = userBranch != null && dept.department.toUpperCase() == userBranch.toUpperCase();
-                  final ratio = dept.totalPoints / maxPointsVal;
-
-                  return ClayCard(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    borderColor: isUserBranch ? LitColors.ember : Colors.transparent,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Department header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '${dept.rank} · ${dept.department}',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: LitColors.bone,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '${dept.totalPoints} pts',
-                              style: GoogleFonts.jetBrainsMono(
-                                color: LitColors.bone,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ClayProgressBar(progress: ratio),
-                        if (isUserBranch) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Your branch',
-                            style: GoogleFonts.plusJakartaSans(
-                              color: LitColors.ember,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  // Header section
+                  return const Padding(
+                    padding: EdgeInsets.only(bottom: 16),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          SizedBox(height: 12),
+                          Icon(
+                            Icons.emoji_events_rounded,
+                            size: 48,
+                            color: LitColors.ember,
                           ),
+                          SizedBox(height: 8),
+                          _SarvottamTitle(),
+                          SizedBox(height: 4),
+                          _LiveStandingsText(),
                         ],
-                        const SizedBox(height: 16),
-                        
-                        // Detailed results table
-                        ClayInsetCard(
-                          borderRadius: 12,
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          child: Table(
-                            columnWidths: const {
-                              0: FlexColumnWidth(2),
-                              1: FlexColumnWidth(1),
-                              2: FlexColumnWidth(1),
-                              3: FlexColumnWidth(1),
-                            },
-                            border: TableBorder.symmetric(
-                              inside: BorderSide(color: LitColors.ash.withValues(alpha: 0.2), width: 1),
-                            ),
-                            children: [
-                              // Header row
-                              TableRow(
-                                decoration: BoxDecoration(
-                                  color: LitColors.clay.withValues(alpha: 0.5),
-                                ),
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                    child: Text(
-                                      'Event',
-                                      style: GoogleFonts.fredoka(
-                                        color: LitColors.bone,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                    child: Text(
-                                      'Position',
-                                      style: GoogleFonts.fredoka(
-                                        color: LitColors.bone,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                    child: Text(
-                                      'Points',
-                                      style: GoogleFonts.fredoka(
-                                        color: LitColors.bone,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                    child: Text(
-                                      'Actions',
-                                      style: GoogleFonts.fredoka(
-                                        color: LitColors.bone,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              // Event result rows
-                              ...dept.eventResults.map((result) {
-                                String positionText = '';
-                                if (result.position == 'winner') {
-                                  positionText = 'Winner';
-                                } else if (result.position == 'runner_up') {
-                                  positionText = 'Runner-Up';
-                                } else if (result.position == 'second_runner_up') {
-                                  positionText = '2nd RU';
-                                } else {
-                                  positionText = 'Participation';
-                                }
-
-                                return TableRow(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                                      child: Text(
-                                        result.eventName,
-                                        style: GoogleFonts.plusJakartaSans(
-                                          color: LitColors.bone,
-                                          fontSize: 10,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                                      child: Text(
-                                        positionText,
-                                        style: GoogleFonts.plusJakartaSans(
-                                          color: LitColors.ash,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                                      child: Text(
-                                        '${result.points}',
-                                        style: GoogleFonts.jetBrainsMono(
-                                          color: LitColors.moss,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          // Navigate to event details page
-                                          context.push('/events/${result.eventId}');
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: LitColors.ember,
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            'View',
-                                            style: GoogleFonts.plusJakartaSans(
-                                              color: Colors.white,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   );
-                }),
-                const SizedBox(height: 130),
-              ],
+                } else if (index == 1) {
+                  // Points System Legend Chips
+                  return const Padding(
+                    padding: EdgeInsets.only(bottom: 24),
+                    child: _LegendChips(),
+                  );
+                } else if (index == itemCount - 1) {
+                  // Bottom padding
+                  return const SizedBox(height: 130);
+                } else {
+                  // Department card
+                  final deptIndex = index - 2;
+                  final dept = departments[deptIndex];
+                  final isUserBranch = userBranch != null && dept.department.toUpperCase() == userBranch.toUpperCase();
+                  final ratio = dept.totalPoints / maxPointsVal;
+                  return RepaintBoundary(
+                    child: _DepartmentCard(
+                      dept: dept,
+                      isUserBranch: isUserBranch,
+                      ratio: ratio,
+                      userBranch: userBranch,
+                    ),
+                  );
+                }
+              },
             ),
           );
         },
@@ -718,6 +513,328 @@ class LeaderboardScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SarvottamTitle extends StatelessWidget {
+  const _SarvottamTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Sarvottam Trophy',
+      style: GoogleFonts.fredoka(
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        color: LitColors.bone,
+      ),
+    );
+  }
+}
+
+class _LiveStandingsText extends StatelessWidget {
+  const _LiveStandingsText();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Live branch standings',
+      style: GoogleFonts.plusJakartaSans(
+        fontSize: 13,
+        color: LitColors.ash,
+      ),
+    );
+  }
+}
+
+class _LegendChips extends StatelessWidget {
+  const _LegendChips();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: const [
+        _LegendChip(text: 'Winner 10'),
+        _LegendChip(text: 'Runner-Up 7'),
+        _LegendChip(text: '2nd RU 5'),
+        _LegendChip(text: 'Participation 1'),
+      ],
+    );
+  }
+}
+
+class _LegendChip extends StatelessWidget {
+  final String text;
+
+  const _LegendChip({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClayInsetCard(
+      borderRadius: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Text(
+        text,
+        style: GoogleFonts.plusJakartaSans(
+          color: LitColors.ash,
+          fontSize: 10.5,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
+
+class _DepartmentCard extends StatelessWidget {
+  final DepartmentResult dept;
+  final bool isUserBranch;
+  final double ratio;
+  final String? userBranch;
+
+  const _DepartmentCard({
+    required this.dept,
+    required this.isUserBranch,
+    required this.ratio,
+    this.userBranch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClayCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      borderColor: isUserBranch ? LitColors.ember : Colors.transparent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DepartmentHeader(
+            rank: dept.rank,
+            department: dept.department,
+            totalPoints: dept.totalPoints,
+          ),
+          const SizedBox(height: 10),
+          ClayProgressBar(progress: ratio),
+          if (isUserBranch) ...[
+            const SizedBox(height: 8),
+            const _YourBranchText(),
+          ],
+          const SizedBox(height: 16),
+          _EventResultsTable(
+            eventResults: dept.eventResults,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DepartmentHeader extends StatelessWidget {
+  final int rank;
+  final String department;
+  final int totalPoints;
+
+  const _DepartmentHeader({
+    required this.rank,
+    required this.department,
+    required this.totalPoints,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          '$rank · $department',
+          style: GoogleFonts.plusJakartaSans(
+            color: LitColors.bone,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          '$totalPoints pts',
+          style: GoogleFonts.jetBrainsMono(
+            color: LitColors.bone,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _YourBranchText extends StatelessWidget {
+  const _YourBranchText();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Your branch',
+      style: GoogleFonts.plusJakartaSans(
+        color: LitColors.ember,
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+}
+
+class _EventResultsTable extends StatelessWidget {
+  final List<EventResult> eventResults;
+
+  const _EventResultsTable({required this.eventResults});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClayInsetCard(
+      borderRadius: 12,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      child: Table(
+        columnWidths: const {
+          0: FlexColumnWidth(2),
+          1: FlexColumnWidth(1),
+          2: FlexColumnWidth(1),
+          3: FlexColumnWidth(1),
+        },
+        border: TableBorder.symmetric(
+          inside: BorderSide(color: LitColors.ash.withValues(alpha: 0.2), width: 1),
+        ),
+        children: [
+          TableRow(
+            decoration: BoxDecoration(
+              color: LitColors.clay.withValues(alpha: 0.5),
+            ),
+            children: const [
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: _TableHeaderText(text: 'Event'),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: _TableHeaderText(text: 'Position'),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: _TableHeaderText(text: 'Points'),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: _TableHeaderText(text: 'Actions'),
+              ),
+            ],
+          ),
+          for (final result in eventResults)
+            TableRow(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  child: Text(
+                    result.eventName,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: LitColors.bone,
+                      fontSize: 10,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  child: Text(
+                    _getPositionText(result.position),
+                    style: GoogleFonts.plusJakartaSans(
+                      color: LitColors.ash,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  child: Text(
+                    '${result.points}',
+                    style: GoogleFonts.jetBrainsMono(
+                      color: LitColors.moss,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  child: _ViewEventButton(eventId: result.eventId),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _getPositionText(String? position) {
+    if (position == 'winner') {
+      return 'Winner';
+    } else if (position == 'runner_up') {
+      return 'Runner-Up';
+    } else if (position == 'second_runner_up') {
+      return '2nd RU';
+    } else {
+      return 'Participation';
+    }
+  }
+}
+
+class _TableHeaderText extends StatelessWidget {
+  final String text;
+
+  const _TableHeaderText({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: GoogleFonts.fredoka(
+        color: LitColors.bone,
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+      ),
+      textAlign: TextAlign.center,
+    );
+  }
+}
+
+class _ViewEventButton extends StatelessWidget {
+  final String eventId;
+
+  const _ViewEventButton({required this.eventId});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push('/events/$eventId'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: LitColors.ember,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          'View',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
