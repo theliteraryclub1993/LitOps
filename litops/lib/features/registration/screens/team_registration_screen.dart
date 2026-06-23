@@ -25,6 +25,24 @@ class _TeamRegistrationScreenState
   Student? _captain;
   bool _saving = false;
 
+  final List<String> _branches = [
+    'CS', 'IS', 'CI', 'CB', 'RI', 'EC', 'VL', 'EI', 'EE', 'CV', 'ME'
+  ];
+
+  static const _branchDisplayNames = {
+    'CS': 'Computer Science',
+    'IS': 'Information Science',
+    'CI': 'Artificial Intelligence and Machine Learning',
+    'CB': 'Computer Science and Business Studies',
+    'RI': 'Robotics & Intelligence',
+    'EC': 'Electronics & Communication',
+    'VL': 'VLSI',
+    'EI': 'Electronics & Instrumentation',
+    'EE': 'Electrical & Electronics',
+    'CV': 'Civil',
+    'ME': 'Mechanical',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -71,7 +89,7 @@ class _TeamRegistrationScreenState
         _members.add(student);
         _captain ??= student;
         if (_members.length == 1 && _teamNameCtrl.text.isEmpty) {
-          _teamNameCtrl.text = student.branch;
+          _teamNameCtrl.text = _branchDisplayNames[student.branch] ?? student.branch;
         }
         _usnCtrl.clear();
       });
@@ -196,7 +214,7 @@ class _TeamRegistrationScreenState
           ),
           const SizedBox(height: 12),
 
-          // Team Name Field
+          // Team Name Dropdown Field
           ClayCard(
             padding: const EdgeInsets.all(14),
             child: Column(
@@ -207,10 +225,33 @@ class _TeamRegistrationScreenState
                   style: GoogleFonts.fredoka(fontSize: 13.5, fontWeight: FontWeight.bold, color: LitColors.bone),
                 ),
                 const SizedBox(height: 10),
-                ClayTextField(
-                  controller: _teamNameCtrl,
-                  hintText: 'Team Name',
-                  prefixIcon: const Icon(Icons.group_outlined),
+                ClayInsetCard(
+                  borderRadius: 14,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: _teamNameCtrl.text.isEmpty ? null : _teamNameCtrl.text,
+                    dropdownColor: LitColors.clay,
+                    decoration: const InputDecoration(border: InputBorder.none),
+                    hint: Text('Select Department (Team Name)', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 13)),
+                    items: _branches
+                        .map((b) => DropdownMenuItem(
+                            value: _branchDisplayNames[b] ?? b, 
+                            child: Text(
+                              _branchDisplayNames[b] ?? b, 
+                              style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            )))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          _teamNameCtrl.text = v;
+                        });
+                      }
+                    },
+                  ),
                 ),
               ],
             ),

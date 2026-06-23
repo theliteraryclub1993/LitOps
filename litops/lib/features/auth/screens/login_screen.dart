@@ -99,253 +99,257 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       body: Stack(
         children: [
           // Background Glows
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _glowAnimation,
-              builder: (context, child) {
-                return CustomPaint(
-                  painter: _LoginGlowPainter(glowOpacity: _glowAnimation.value),
-                );
-              },
+          RepaintBoundary(
+            child: Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _glowAnimation,
+                builder: (context, child) {
+                  return CustomPaint(
+                    painter: _LoginGlowPainter(glowOpacity: _glowAnimation.value),
+                  );
+                },
+              ),
             ),
           ),
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: r.w(24), vertical: r.h(16)),
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: SlideTransition(
-                    position: _slideAnimation,
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(height: r.h(12)),
-                          // MCE Tag Box
-                          Container(
-                            width: r.w(46),
-                            height: r.w(46),
-                            decoration: BoxDecoration(
-                              color: LitColors.clay2,
-                              borderRadius: BorderRadius.circular(r.radius(14)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.5),
-                                  offset: Offset(r.w(4), r.w(4)),
-                                  blurRadius: r.radius(9),
+          RepaintBoundary(
+            child: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(horizontal: r.w(24), vertical: r.h(16)),
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(height: r.h(12)),
+                            // MCE Tag Box
+                            Container(
+                              width: r.w(46),
+                              height: r.w(46),
+                              decoration: BoxDecoration(
+                                color: LitColors.clay2,
+                                borderRadius: BorderRadius.circular(r.radius(14)),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    offset: Offset(r.w(4), r.w(4)),
+                                    blurRadius: r.radius(9),
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                'MCE',
+                                style: GoogleFonts.fredoka(
+                                  fontSize: r.sp(13),
+                                  fontWeight: FontWeight.bold,
+                                  color: LitColors.amber,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: r.h(12)),
+                            Text(
+                              'Welcome back',
+                              style: GoogleFonts.fredoka(
+                                fontSize: r.sp(22),
+                                fontWeight: FontWeight.w600,
+                                color: LitColors.bone,
+                              ),
+                            ),
+                            SizedBox(height: r.h(4)),
+                            Text(
+                              'Sign in to run the fest',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: r.sp(12),
+                                color: LitColors.ash,
+                              ),
+                            ),
+                            SizedBox(height: r.h(32)),
+
+                            // Email
+                            ClayTextField(
+                              controller: _emailController,
+                              hintText: 'USN or college email',
+                              prefixIcon: const Icon(Icons.person_outline),
+                              keyboardType: TextInputType.emailAddress,
+                              validator: (v) =>
+                                  v == null || v.isEmpty ? 'Please enter your email/USN' : null,
+                            ),
+                            SizedBox(height: r.h(12)),
+
+                            // Password
+                            ClayTextField(
+                              controller: _passwordController,
+                              hintText: '••••••••••',
+                              obscureText: _obscurePassword,
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: GestureDetector(
+                                onTap: () => setState(() => _obscurePassword = !_obscurePassword),
+                                child: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                              ),
+                              validator: (v) =>
+                                  v == null || v.isEmpty ? 'Please enter your password' : null,
+                            ),
+                            SizedBox(height: r.h(10)),
+
+                            // Remember Me & Forgot Password Row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                GestureDetector(
+                                  onTap: () => setState(() => _rememberMe = !_rememberMe),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: r.w(18),
+                                        height: r.w(18),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(r.radius(5)),
+                                          border: Border.all(
+                                            color: _rememberMe ? LitColors.ember : LitColors.ash.withValues(alpha: 0.4),
+                                            width: 1.5,
+                                          ),
+                                          color: _rememberMe ? LitColors.ember : Colors.transparent,
+                                        ),
+                                        child: _rememberMe
+                                            ? Icon(Icons.check, size: r.icon(12), color: Colors.white)
+                                            : null,
+                                      ),
+                                      SizedBox(width: r.w(8)),
+                                      Text(
+                                        'Remember me',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: LitColors.ash,
+                                          fontSize: r.sp(12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => context.go('/forgot-password'),
+                                  child: Text(
+                                    'Forgot password?',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: LitColors.amber,
+                                      fontSize: r.sp(11),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'MCE',
-                              style: GoogleFonts.fredoka(
-                                fontSize: r.sp(13),
-                                fontWeight: FontWeight.bold,
-                                color: LitColors.amber,
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: r.h(12)),
-                          Text(
-                            'Welcome back',
-                            style: GoogleFonts.fredoka(
-                              fontSize: r.sp(22),
-                              fontWeight: FontWeight.w600,
-                              color: LitColors.bone,
-                            ),
-                          ),
-                          SizedBox(height: r.h(4)),
-                          Text(
-                            'Sign in to run the fest',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: r.sp(12),
-                              color: LitColors.ash,
-                            ),
-                          ),
-                          SizedBox(height: r.h(32)),
+                            SizedBox(height: r.h(24)),
 
-                          // Email
-                          ClayTextField(
-                            controller: _emailController,
-                            hintText: 'USN or college email',
-                            prefixIcon: const Icon(Icons.person_outline),
-                            keyboardType: TextInputType.emailAddress,
-                            validator: (v) =>
-                                v == null || v.isEmpty ? 'Please enter your email/USN' : null,
-                          ),
-                          SizedBox(height: r.h(12)),
-
-                          // Password
-                          ClayTextField(
-                            controller: _passwordController,
-                            hintText: '••••••••••',
-                            obscureText: _obscurePassword,
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: GestureDetector(
-                              onTap: () => setState(() => _obscurePassword = !_obscurePassword),
-                              child: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                              ),
-                            ),
-                            validator: (v) =>
-                                v == null || v.isEmpty ? 'Please enter your password' : null,
-                          ),
-                          SizedBox(height: r.h(10)),
-
-                          // Remember Me & Forgot Password Row
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              GestureDetector(
-                                onTap: () => setState(() => _rememberMe = !_rememberMe),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: r.w(18),
+                            // Sign In Button
+                            ClayButton(
+                              onPressed: authState.isLoading ? null : _handleLogin,
+                              child: authState.isLoading
+                                  ? SizedBox(
                                       height: r.w(18),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(r.radius(5)),
-                                        border: Border.all(
-                                          color: _rememberMe ? LitColors.ember : LitColors.ash.withValues(alpha: 0.4),
-                                          width: 1.5,
+                                      width: r.w(18),
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          Color(0xFF1A0D05),
                                         ),
-                                        color: _rememberMe ? LitColors.ember : Colors.transparent,
                                       ),
-                                      child: _rememberMe
-                                          ? Icon(Icons.check, size: r.icon(12), color: Colors.white)
-                                          : null,
-                                    ),
-                                    SizedBox(width: r.w(8)),
-                                    Text(
-                                      'Remember me',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        color: LitColors.ash,
-                                        fontSize: r.sp(12),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => context.go('/forgot-password'),
-                                child: Text(
-                                  'Forgot password?',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: LitColors.amber,
-                                    fontSize: r.sp(11),
-                                    fontWeight: FontWeight.w600,
+                                    )
+                                  : const Text('Sign In'),
+                            ),
+                            
+                            SizedBox(height: r.h(16)),
+                            Row(
+                              children: [
+                                Expanded(child: Container(height: 1, color: Colors.white.withValues(alpha: 0.08))),
+                                Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: r.w(10)),
+                                  child: Text(
+                                    'or',
+                                    style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: r.sp(10)),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: r.h(24)),
+                                Expanded(child: Container(height: 1, color: Colors.white.withValues(alpha: 0.08))),
+                              ],
+                            ),
+                            SizedBox(height: r.h(16)),
 
-                          // Sign In Button
-                          ClayButton(
-                            onPressed: authState.isLoading ? null : _handleLogin,
-                            child: authState.isLoading
-                                ? SizedBox(
-                                    height: r.w(18),
-                                    width: r.w(18),
-                                    child: const CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Color(0xFF1A0D05),
-                                      ),
-                                    ),
-                                  )
-                                : const Text('Sign In'),
-                          ),
-                          
-                          SizedBox(height: r.h(16)),
-                          Row(
-                            children: [
-                              Expanded(child: Container(height: 1, color: Colors.white.withValues(alpha: 0.08))),
-                              Padding(
-                                padding: EdgeInsets.symmetric(horizontal: r.w(10)),
-                                child: Text(
-                                  'or',
-                                  style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: r.sp(10)),
-                                ),
+                            // Tap ID Card Button
+                            ClayButton(
+                              isGhost: true,
+                              onPressed: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text('NFC/ID scanning is currently mock-only. Use credentials.'),
+                                    backgroundColor: LitColors.clay2,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.radius(10))),
+                                  ),
+                                );
+                              },
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.qr_code_scanner, size: r.icon(14)),
+                                  SizedBox(width: r.w(8)),
+                                  const Text('Tap College ID Card'),
+                                ],
                               ),
-                              Expanded(child: Container(height: 1, color: Colors.white.withValues(alpha: 0.08))),
-                            ],
-                          ),
-                          SizedBox(height: r.h(16)),
+                            ),
 
-                          // Tap ID Card Button
-                          ClayButton(
-                            isGhost: true,
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('NFC/ID scanning is currently mock-only. Use credentials.'),
-                                  backgroundColor: LitColors.clay2,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r.radius(10))),
-                                ),
-                              );
-                            },
-                            child: Row(
+                            SizedBox(height: r.h(20)),
+                            // Info Row
+                            Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.qr_code_scanner, size: r.icon(14)),
-                                SizedBox(width: r.w(8)),
-                                const Text('Tap College ID Card'),
-                              ],
-                            ),
-                          ),
-
-                          SizedBox(height: r.h(20)),
-                          // Info Row
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.shield_outlined, color: LitColors.ash, size: r.icon(11)),
-                              SizedBox(width: r.w(4)),
-                              Flexible(
-                                child: Text(
-                                  'Access is role-based · secured by Supabase Auth',
-                                  style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: r.sp(10)),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          SizedBox(height: r.h(32)),
-                          // Create account link
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'New here? ',
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: LitColors.ash,
-                                  fontSize: r.sp(13),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => context.go('/register'),
-                                child: Text(
-                                  'Create an account',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: LitColors.ember,
-                                    fontSize: r.sp(13),
-                                    fontWeight: FontWeight.bold,
+                                Icon(Icons.shield_outlined, color: LitColors.ash, size: r.icon(11)),
+                                SizedBox(width: r.w(4)),
+                                Flexible(
+                                  child: Text(
+                                    'Access is role-based · secured by Supabase Auth',
+                                    style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: r.sp(10)),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
 
-                          SizedBox(height: r.h(24)),
-                        ],
+                            SizedBox(height: r.h(32)),
+                            // Create account link
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'New here? ',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: LitColors.ash,
+                                    fontSize: r.sp(13),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => context.go('/register'),
+                                  child: Text(
+                                    'Create an account',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: LitColors.ember,
+                                      fontSize: r.sp(13),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            SizedBox(height: r.h(24)),
+                          ],
+                        ),
                       ),
                     ),
                   ),

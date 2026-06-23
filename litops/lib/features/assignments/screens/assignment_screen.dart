@@ -146,66 +146,74 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
 
                               return ClayCard(
                                 margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 child: Row(
-                                  children: [
-                                    UserAvatar(name: user.fullName),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            user.fullName,
-                                            style: GoogleFonts.plusJakartaSans(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13,
-                                              color: LitColors.bone,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Row(
+                                      mainAxisSize: MainAxisSize.max,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        UserAvatar(name: user.fullName),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                user.role.label,
-                                                style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11),
+                                                user.fullName,
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                  color: LitColors.bone,
+                                                ),
                                               ),
-                                              if (userAssignments.isNotEmpty) ...[
-                                                const SizedBox(width: 8),
-                                                const StatusChip(label: 'Assigned'),
-                                              ],
+                                              const SizedBox(height: 2),
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    user.role.label,
+                                                    style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11),
+                                                  ),
+                                                  if (userAssignments.isNotEmpty) ...[
+                                                    const SizedBox(width: 8),
+                                                    const StatusChip(label: 'Assigned'),
+                                                  ],
+                                                ],
+                                              ),
                                             ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                    if (isAuthorized)
-                                      ClayButton(
-                                        width: 84,
-                                        height: 36,
-                                        borderRadius: 10,
-                                        isDanger: userAssignments.isNotEmpty,
-                                        isGhost: userAssignments.isEmpty,
-                                        onPressed: userAssignments.isNotEmpty
-                                            ? () async {
-                                                for (final a in userAssignments) {
-                                                  await SupabaseConfig.client
-                                                      .from(SupabaseTables.eventAssignments)
-                                                      .delete()
-                                                      .eq('id', a.id);
-                                                }
-                                                _loadAssignments(_selectedEvent!.id);
-                                              }
-                                            : () => _assign(user.id, AssignmentRole.volunteer),
-                                        child: Text(
-                                          userAssignments.isNotEmpty ? 'Unassign' : 'Assign',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 11,
-                                          ),
                                         ),
-                                      ),
-                                  ],
-                                ),
+                                        if (isAuthorized)
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 8),
+                                            child: ClayButton(
+                                              width: 90,
+                                              height: 40,
+                                              borderRadius: 12,
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              isDanger: userAssignments.isNotEmpty,
+                                              isGhost: userAssignments.isEmpty,
+                                              onPressed: userAssignments.isNotEmpty
+                                                  ? () async {
+                                                      for (final a in userAssignments) {
+                                                        await SupabaseConfig.client
+                                                            .from(SupabaseTables.eventAssignments)
+                                                            .delete()
+                                                            .eq('id', a.id);
+                                                      }
+                                                      _loadAssignments(_selectedEvent!.id);
+                                                    }
+                                                  : () => _assign(user.id, AssignmentRole.volunteer),
+                                              child: Text(
+                                                userAssignments.isNotEmpty ? 'Unassign' : 'Assign',
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  color: userAssignments.isNotEmpty ? LitColors.bone : LitColors.ember,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                               );
                             },
                           ),

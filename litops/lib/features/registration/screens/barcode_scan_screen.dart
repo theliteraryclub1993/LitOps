@@ -12,6 +12,7 @@ import '../../events/screens/event_detail_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import 'registration_screen.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/utils/app_utils.dart';
 
 class BarcodeScanScreen extends ConsumerStatefulWidget {
   final Event? initialEvent;
@@ -47,11 +48,26 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     'ME'
   ];
 
+  static const _branchDisplayNames = {
+    'CS': 'Computer Science',
+    'IS': 'Information Science',
+    'CI': 'Artificial Intelligence and Machine Learning',
+    'CB': 'Computer Science and Business Studies',
+    'RI': 'Robotics & Intelligence',
+    'EC': 'Electronics & Communication',
+    'VL': 'VLSI',
+    'EI': 'Electronics & Instrumentation',
+    'EE': 'Electrical & Electronics',
+    'CV': 'Civil',
+    'ME': 'Mechanical',
+  };
+
   Event? _selectedEvent;
   List<Event> _events = [];
   bool _isLoading = false;
   bool _isRegistering = false;
   bool _scanEnabled = true;
+  String? _teamDepartment;
 
   // Participant slots
   List<Student?> _participants = [];
@@ -64,6 +80,40 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     _selectedEvent = widget.initialEvent;
     _initializeSlots();
     _loadEvents();
+    _manualUsnController.addListener(_onManualUsnChanged);
+  }
+
+  void _onManualUsnChanged() {
+    final usn = _manualUsnController.text.trim().toUpperCase();
+    final usnRegExp = RegExp(r'^\d[A-Z]{2}\d{2}[A-Z]{2}\d{3}$');
+    if (usnRegExp.hasMatch(usn)) {
+      final yearPart = usn.substring(3, 5);
+      final branchPart = usn.substring(5, 7);
+      
+      final admissionYear = int.tryParse("20$yearPart");
+      int? inferredYear;
+      if (admissionYear != null) {
+        final now = DateTime.now();
+        final currentYear = now.year;
+        final currentMonth = now.month;
+        int studyYear = currentYear - admissionYear;
+        if (currentMonth >= 8) {
+          studyYear += 1;
+        }
+        if (studyYear >= 1 && studyYear <= 4) {
+          inferredYear = studyYear;
+        }
+      }
+      
+      setState(() {
+        if (_branches.contains(branchPart)) {
+          _manualBranch = branchPart;
+        }
+        if (inferredYear != null) {
+          _manualYear = inferredYear;
+        }
+      });
+    }
   }
 
   void _initializeSlots() {
@@ -77,6 +127,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
       _activeSlotIndex = 0;
     }
     _showManualFormForActiveSlot = false;
+    _teamDepartment = null;
   }
 
   Future<void> _loadEvents() async {
@@ -171,8 +222,25 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 backgroundColor: Colors.orange));
           }
         } else {
+          if (_selectedEvent!.isTeamEvent && _teamDepartment != null) {
+            if (student.branch != _teamDepartment) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('This team belongs to ${_branchDisplayNames[_teamDepartment]}. Only ${_branchDisplayNames[_teamDepartment]} students can be added.'),
+                    backgroundColor: Colors.orange));
+              }
+              setState(() {
+                _isLoading = false;
+              });
+              return;
+            }
+          }
+
           setState(() {
             _participants[_activeSlotIndex] = student;
+            if (_selectedEvent!.isTeamEvent && _activeSlotIndex == 0) {
+              _teamDepartment = student.branch;
+            }
             _moveToNextEmptySlot();
           });
         }
@@ -196,7 +264,6 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     }
     setState(() {
       _isLoading = false;
-      _scanEnabled = true;
     });
   }
 
@@ -215,12 +282,135 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   void _removeParticipant(int index) {
     setState(() {
       _participants[index] = null;
+      if (_selectedEvent!.isTeamEvent && index == 0) {
+        _teamDepartment = null;
+      }
       if (_activeSlotIndex > index ||
           _activeSlotIndex == _participants.length) {
         _activeSlotIndex = index;
       }
       _showManualFormForActiveSlot = false;
     });
+  }
+
+  void _editStudentBranchAndYear(int index) {
+    final student = _participants[index];
+    if (student == null) return;
+
+    String selectedBranch = student.branch;
+    int selectedYear = student.year;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1D1A18),
+              title: Text(
+                'Edit Details for ${student.name}',
+                style: GoogleFonts.fredoka(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: selectedBranch,
+                    dropdownColor: const Color(0xFF1D1A18),
+                    decoration: const InputDecoration(
+                      labelText: 'Branch',
+                      labelStyle: TextStyle(color: Color(0xFF8C857C)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF262220))),
+                    ),
+                    items: _branches
+                        .map((b) => DropdownMenuItem(
+                              value: b,
+                              child: Text(
+                                b,
+                                style: const TextStyle(color: Color(0xFFF3ECE2)),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setDialogState(() => selectedBranch = v);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    value: selectedYear,
+                    dropdownColor: const Color(0xFF1D1A18),
+                    decoration: const InputDecoration(
+                      labelText: 'Year',
+                      labelStyle: TextStyle(color: Color(0xFF8C857C)),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF262220))),
+                    ),
+                    items: [1, 2, 3, 4]
+                        .map((y) => DropdownMenuItem(
+                              value: y,
+                              child: Text(
+                                '$y Year',
+                                style: const TextStyle(color: Color(0xFFF3ECE2)),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setDialogState(() => selectedYear = v);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Color(0xFF8C857C))),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final updatedStudent = student.copyWith(
+                      branch: selectedBranch,
+                      year: selectedYear,
+                    );
+                    
+                    setState(() {
+                      _participants[index] = updatedStudent;
+                    });
+                    
+                    Navigator.pop(context);
+
+                    try {
+                      await SupabaseConfig.client
+                          .from(SupabaseTables.studentMaster)
+                          .update({
+                            'branch': selectedBranch,
+                            'year': selectedYear,
+                          })
+                          .eq('id', student.id);
+                    } catch (e) {
+                      debugPrint('Error updating student details in DB: $e');
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6FAE8F),
+                    foregroundColor: const Color(0xFF1A0D05),
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _saveManualStudent() async {
@@ -274,8 +464,25 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               backgroundColor: Colors.orange));
         }
       } else {
+        if (_selectedEvent!.isTeamEvent && _teamDepartment != null) {
+          if (student.branch != _teamDepartment) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('This team belongs to ${_branchDisplayNames[_teamDepartment]}. Only ${_branchDisplayNames[_teamDepartment]} students can be added.'),
+                  backgroundColor: Colors.orange));
+            }
+            setState(() {
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+
         setState(() {
           _participants[_activeSlotIndex] = student;
+          if (_selectedEvent!.isTeamEvent && _activeSlotIndex == 0) {
+            _teamDepartment = student.branch;
+          }
           _moveToNextEmptySlot();
         });
         _manualNameController.clear();
@@ -373,15 +580,17 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
         }
       } else {
         // Team Registration
-        final teamName = "${_participants[0]!.name}'s Team";
+        final teamName = _branchDisplayNames[_teamDepartment] ?? _teamDepartment!;
+        final captain = _participants[0]!;
 
         // Create Team
         final teamData = await SupabaseConfig.client
             .from(SupabaseTables.teams)
             .insert({
               'event_id': _selectedEvent!.id,
-              'name': teamName,
-              'created_by': userId,
+              'team_name': teamName,
+              'captain_id': captain.id,
+              'registered_by': userId,
             })
             .select()
             .single();
@@ -397,7 +606,6 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
             'team_id': teamId,
             'student_id': student.id,
             'is_captain': isCaptain,
-            'joined_at': DateTime.now().toIso8601String(),
           });
 
           // Register student for event
@@ -458,6 +666,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
       // Success, reset the form
       setState(() {
         _initializeSlots();
+        _scanEnabled = true;
       });
     } catch (e) {
       if (mounted) {
@@ -471,6 +680,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
 
   @override
   void dispose() {
+    _manualUsnController.removeListener(_onManualUsnChanged);
     _usnController.dispose();
     _manualNameController.dispose();
     _manualUsnController.dispose();
@@ -479,179 +689,473 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    bool isAllFilled =
-        _participants.isNotEmpty && !_participants.any((p) => p == null);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: const Text('Unified Registration Panel', style: TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold)),
+  Widget _buildSlotItem(int index) {
+    final student = _participants[index];
+    final isActive = index == _activeSlotIndex;
+    return Card(
+      color: student != null
+          ? const Color(0xFF11261B)
+          : (isActive ? const Color(0xFF2B1C15) : Theme.of(context).cardColor),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(
+            color: isActive
+                ? Theme.of(context).colorScheme.primary
+                : const Color(0xFF262220),
+            width: isActive ? 2 : 1.2),
+        borderRadius: BorderRadius.circular(12),
       ),
-      body: Row(
-        children: [
-          // Left side: Scanner and Slots
-          Expanded(
-            flex: 2,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: DropdownButtonFormField<Event>(
-                    initialValue: _selectedEvent,
-                    decoration:
-                        const InputDecoration(labelText: 'Select Event'),
-                    items: _events
-                        .map((e) =>
-                            DropdownMenuItem(value: e, child: Text(e.name)))
-                        .toList(),
-                    onChanged: (v) {
-                      setState(() {
-                        _selectedEvent = v;
-                        _initializeSlots();
-                      });
-                    },
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: student != null
+              ? const Color(0xFF6FAE8F)
+              : (isActive ? Theme.of(context).colorScheme.primary : const Color(0xFF262220)),
+          child: Text('${index + 1}',
+              style: const TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold)),
+        ),
+        title: Text(
+          student != null
+              ? student.name
+              : (isActive ? 'Waiting for scan...' : 'Empty Slot'),
+          style: GoogleFonts.plusJakartaSans(
+            fontWeight: FontWeight.bold,
+            color: student != null
+                ? const Color(0xFF6FAE8F)
+                : (isActive ? Theme.of(context).colorScheme.primary : const Color(0xFF8C857C)),
+          ),
+        ),
+        subtitle: student != null
+            ? Text('${student.usn} • ${student.branch} • ${student.year} Yr', style: const TextStyle(color: Color(0xFF8C857C)))
+            : null,
+        trailing: student != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Color(0xFF6FAE8F)),
+                    onPressed: () => _editStudentBranchAndYear(index),
                   ),
-                ),
-                if (_selectedEvent != null) ...[
-                  // Slots
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _participants.length,
-                      itemBuilder: (context, index) {
-                        final student = _participants[index];
-                        final isActive = index == _activeSlotIndex;
-                        return Card(
-                          color: student != null
-                              ? const Color(0xFF11261B)
-                              : (isActive ? const Color(0xFF2B1C15) : Theme.of(context).cardColor),
-                          shape: RoundedRectangleBorder(
-                            side: BorderSide(
-                                color: isActive
-                                    ? Theme.of(context).colorScheme.primary
-                                    : const Color(0xFF262220),
-                                width: isActive ? 2 : 1.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: student != null
-                                  ? const Color(0xFF6FAE8F)
-                                  : (isActive ? Theme.of(context).colorScheme.primary : const Color(0xFF262220)),
-                              child: Text('${index + 1}',
-                                  style: const TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold)),
-                            ),
-                            title: Text(
-                              student != null
-                                  ? student.name
-                                  : (isActive ? 'Waiting for scan...' : 'Empty Slot'),
-                              style: GoogleFonts.plusJakartaSans(
-                                fontWeight: FontWeight.bold,
-                                color: student != null
-                                    ? const Color(0xFF6FAE8F)
-                                    : (isActive ? Theme.of(context).colorScheme.primary : const Color(0xFF8C857C)),
-                              ),
-                            ),
-                            subtitle: student != null
-                                ? Text(student.usn, style: const TextStyle(color: Color(0xFF8C857C)))
-                                : null,
-                            trailing: student != null
-                                ? IconButton(
-                                    icon: const Icon(Icons.close, color: Color(0xFFFF5C5C)),
-                                    onPressed: () => _removeParticipant(index))
-                                : null,
-                            onTap: () {
-                              if (student == null) {
-                                  setState(() {
-                                    _activeSlotIndex = index;
-                                    _showManualFormForActiveSlot = false;
-                                  });
-                              }
-                            },
-                          ),
-                        );
-                      },
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Color(0xFFFF5C5C)),
+                    onPressed: () => _removeParticipant(index),
                   ),
+                ],
+              )
+            : null,
+        onTap: () {
+          if (student == null) {
+            setState(() {
+              _activeSlotIndex = index;
+              _showManualFormForActiveSlot = false;
+              _scanEnabled = true;
+            });
+          } else {
+            _editStudentBranchAndYear(index);
+          }
+        },
+      ),
+    );
+  }
 
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: (_isRegistering || !isAllFilled)
-                            ? null
-                            : _submitRegistration,
-                        icon: _isRegistering
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    color: Color(0xFF1A0D05), strokeWidth: 2))
-                            : const Icon(Icons.check_circle),
-                        label: Text(
-                            _selectedEvent!.isTeamEvent
-                                ? 'Register Team'
-                                : 'Register Participant',
-                            style: const TextStyle(fontSize: 18)),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor:
-                              isAllFilled ? const Color(0xFF6FAE8F) : const Color(0xFF262220),
-                          foregroundColor: isAllFilled ? const Color(0xFF1A0D05) : const Color(0xFF8C857C),
-                        ),
-                      ),
-                    ),
-                  )
-                ] else ...[
-                  const Expanded(
-                      child: Center(
-                          child: Text(
-                              'Please select an event to start registering.',
-                              style: TextStyle(color: Color(0xFF8C857C))))),
-                ]
-              ],
+  Widget _buildMobileLayout() {
+    bool isAllFilled = _participants.isNotEmpty && !_participants.any((p) => p == null);
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: DropdownButtonFormField<Event>(
+              initialValue: _selectedEvent,
+              decoration: const InputDecoration(labelText: 'Select Event'),
+              items: _events
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
+                  .toList(),
+              onChanged: (v) {
+                setState(() {
+                  _selectedEvent = v;
+                  _initializeSlots();
+                });
+              },
             ),
           ),
-
-          // Right side: Scanner / Manual Entry
-          if (_selectedEvent != null && _activeSlotIndex < _participants.length)
-            Expanded(
-              flex: 3,
-              child: Container(
-                decoration: const BoxDecoration(
-                  border: Border(left: BorderSide(color: Color(0xFF262220))),
+          if (_selectedEvent != null) ...[
+            if (_selectedEvent!.isTeamEvent) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Card(
+                  color: const Color(0xFF161413),
+                  shape: RoundedRectangleBorder(
+                    side: const BorderSide(color: Color(0xFF262220), width: 1.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Team Name (Department)',
+                          style: TextStyle(color: Color(0xFF8C857C), fontSize: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          isExpanded: true,
+                          value: _teamDepartment,
+                          dropdownColor: const Color(0xFF1D1A18),
+                          hint: const Text('Select Team Department', style: TextStyle(color: Color(0xFF8C857C), fontSize: 13)),
+                          items: _branches.map((b) => DropdownMenuItem<String>(
+                            value: b,
+                            child: Text(
+                              _branchDisplayNames[b] ?? b,
+                              style: const TextStyle(color: Color(0xFFF3ECE2), fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          )).toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _teamDepartment = value;
+                                // Clear participants that don't match the new department
+                                for (int i = 0; i < _participants.length; i++) {
+                                  if (_participants[i] != null && _participants[i]!.branch != value) {
+                                    _participants[i] = null;
+                                  }
+                                }
+                                // Reset active slot index to first empty slot
+                                _activeSlotIndex = 0;
+                                for (int i = 0; i < _participants.length; i++) {
+                                  if (_participants[i] == null) {
+                                    _activeSlotIndex = i;
+                                    break;
+                                  }
+                                }
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                child: _showManualFormForActiveSlot
-                    ? _buildManualForm()
-                    : _buildScannerAndSearch(),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (_activeSlotIndex < _participants.length)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Card(
+                  color: const Color(0xFF161413),
+                  shape: RoundedRectangleBorder(
+                    side: const BorderSide(color: Color(0xFF262220), width: 1.2),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: _showManualFormForActiveSlot ? _buildManualForm() : _buildScannerAndSearch(isTablet: false),
+                ),
+              )
+            else
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text('All slots filled. Ready to register!',
+                      style: TextStyle(fontSize: 16, color: Color(0xFF6FAE8F), fontWeight: FontWeight.bold)),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Participant Slots',
+                style: GoogleFonts.fredoka(color: const Color(0xFFF3ECE2), fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
-
-          if (_selectedEvent != null &&
-              _activeSlotIndex >= _participants.length)
-            Expanded(
-                flex: 3,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    border:
-                        Border(left: BorderSide(color: Color(0xFF262220))),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              itemCount: _participants.length,
+              itemBuilder: (context, index) => _buildSlotItem(index),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: (_isRegistering || !isAllFilled) ? null : _submitRegistration,
+                  icon: _isRegistering
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(color: Color(0xFF1A0D05), strokeWidth: 2))
+                      : const Icon(Icons.check_circle),
+                  label: Text(_selectedEvent!.isTeamEvent ? 'Register Team' : 'Register Participant',
+                      style: const TextStyle(fontSize: 18)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: isAllFilled ? const Color(0xFF6FAE8F) : const Color(0xFF262220),
+                    foregroundColor: isAllFilled ? const Color(0xFF1A0D05) : const Color(0xFF8C857C),
                   ),
-                  child: const Center(
-                      child: Text('All slots filled. Ready to register!',
-                          style: TextStyle(fontSize: 18, color: Color(0xFF6FAE8F), fontWeight: FontWeight.bold))),
-                ))
+                ),
+              ),
+            )
+          ] else ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 64, horizontal: 32),
+              child: Center(
+                child: Text('Please select an event to start registering.', style: TextStyle(color: Color(0xFF8C857C))),
+              ),
+            ),
+          ]
         ],
       ),
     );
   }
 
-  Widget _buildScannerAndSearch() {
+  Widget _buildTabletLayout() {
+    bool isAllFilled = _participants.isNotEmpty && !_participants.any((p) => p == null);
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 2,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: DropdownButtonFormField<Event>(
+                  initialValue: _selectedEvent,
+                  decoration: const InputDecoration(labelText: 'Select Event'),
+                  items: _events
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() {
+                      _selectedEvent = v;
+                      _initializeSlots();
+                    });
+                  },
+                ),
+              ),
+              if (_selectedEvent != null) ...[
+                if (_selectedEvent!.isTeamEvent) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Card(
+                      color: const Color(0xFF161413),
+                      shape: RoundedRectangleBorder(
+                        side: const BorderSide(color: Color(0xFF262220), width: 1.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Team Name (Department)',
+                              style: TextStyle(color: Color(0xFF8C857C), fontSize: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              value: _teamDepartment,
+                              dropdownColor: const Color(0xFF1D1A18),
+                              hint: const Text('Select Team Department', style: TextStyle(color: Color(0xFF8C857C), fontSize: 13)),
+                              items: _branches.map((b) => DropdownMenuItem<String>(
+                                value: b,
+                                child: Text(
+                                  _branchDisplayNames[b] ?? b,
+                                  style: const TextStyle(color: Color(0xFFF3ECE2), fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              )).toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _teamDepartment = value;
+                                    // Clear participants that don't match the new department
+                                    for (int i = 0; i < _participants.length; i++) {
+                                      if (_participants[i] != null && _participants[i]!.branch != value) {
+                                        _participants[i] = null;
+                                      }
+                                    }
+                                    // Reset active slot index to first empty slot
+                                    _activeSlotIndex = 0;
+                                    for (int i = 0; i < _participants.length; i++) {
+                                      if (_participants[i] == null) {
+                                        _activeSlotIndex = i;
+                                        break;
+                                      }
+                                    }
+                                  });
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _participants.length,
+                    itemBuilder: (context, index) => _buildSlotItem(index),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: (_isRegistering || !isAllFilled) ? null : _submitRegistration,
+                      icon: _isRegistering
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(color: Color(0xFF1A0D05), strokeWidth: 2))
+                          : const Icon(Icons.check_circle),
+                      label: Text(_selectedEvent!.isTeamEvent ? 'Register Team' : 'Register Participant',
+                          style: const TextStyle(fontSize: 18)),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: isAllFilled ? const Color(0xFF6FAE8F) : const Color(0xFF262220),
+                        foregroundColor: isAllFilled ? const Color(0xFF1A0D05) : const Color(0xFF8C857C),
+                      ),
+                    ),
+                  ),
+                )
+              ] else ...[
+                const Expanded(
+                    child: Center(
+                        child: Text('Please select an event to start registering.',
+                            style: TextStyle(color: Color(0xFF8C857C))))),
+              ]
+            ],
+          ),
+        ),
+        if (_selectedEvent != null && _activeSlotIndex < _participants.length)
+          Expanded(
+            flex: 3,
+            child: Container(
+              decoration: const BoxDecoration(
+                border: Border(left: BorderSide(color: Color(0xFF262220))),
+              ),
+              child: _showManualFormForActiveSlot ? _buildManualForm() : _buildScannerAndSearch(isTablet: true),
+            ),
+          ),
+        if (_selectedEvent != null && _activeSlotIndex >= _participants.length)
+          Expanded(
+            flex: 3,
+            child: Container(
+              decoration: const BoxDecoration(
+                border: Border(left: BorderSide(color: Color(0xFF262220))),
+              ),
+              child: const Center(
+                child: Text('All slots filled. Ready to register!',
+                    style: TextStyle(fontSize: 18, color: Color(0xFF6FAE8F), fontWeight: FontWeight.bold)),
+              ),
+            ),
+          )
+      ],
+    );
+  }
+
+  Widget _buildScannerAndSearch({required bool isTablet}) {
+    final scannerWidget = Container(
+      height: isTablet ? null : 240,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          color: Colors.black,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (_scanEnabled)
+                MobileScanner(
+                  onDetect: (capture) {
+                    if (!_scanEnabled) return;
+                    final barcode = capture.barcodes.first;
+                    if (barcode.rawValue != null) {
+                      final extractedUsn = AppUtils.extractUsnFromScan(barcode.rawValue!);
+                      if (extractedUsn.isNotEmpty) {
+                        setState(() {
+                          _scanEnabled = false;
+                          _usnController.text = extractedUsn;
+                        });
+                        _searchStudent(extractedUsn);
+                      }
+                    }
+                  },
+                ),
+              if (!_scanEnabled)
+                Positioned.fill(
+                  child: Container(
+                    color: const Color(0xFF1D1A18),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.qr_code_scanner, color: Color(0xFF8C857C), size: 48),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Scanner Stopped',
+                          style: GoogleFonts.fredoka(color: const Color(0xFFF3ECE2), fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tap the button below to start scanning',
+                          style: GoogleFonts.plusJakartaSans(color: const Color(0xFF8C857C), fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () => setState(() => _scanEnabled = true),
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('Open Scanner'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6FAE8F),
+                            foregroundColor: const Color(0xFF1A0D05),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_scanEnabled)
+                Container(
+                  width: 240,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.55),
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.qr_code_scanner_rounded, color: Theme.of(context).colorScheme.primary, size: 32),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Align barcode in frame',
+                        style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
     return Column(
       children: [
         Container(
@@ -662,21 +1166,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
         ),
-        Expanded(
-          child: MobileScanner(
-            onDetect: (capture) {
-              if (!_scanEnabled) return;
-              final barcode = capture.barcodes.first;
-              if (barcode.rawValue != null) {
-                setState(() {
-                  _scanEnabled = false;
-                  _usnController.text = barcode.rawValue!;
-                });
-                _searchStudent(barcode.rawValue!);
-              }
-            },
-          ),
-        ),
+        isTablet ? Expanded(child: scannerWidget) : scannerWidget,
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.all(16),
@@ -756,10 +1246,18 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: _manualBranch,
                   decoration: const InputDecoration(labelText: 'Branch'),
                   items: _branches
-                      .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                      .map((b) => DropdownMenuItem(
+                            value: b,
+                            child: Text(
+                              b,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ))
                       .toList(),
                   onChanged: (v) => setState(() => _manualBranch = v ?? 'CS'),
                 ),
@@ -767,11 +1265,18 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<int>(
+                  isExpanded: true,
                   initialValue: _manualYear,
                   decoration: const InputDecoration(labelText: 'Year'),
                   items: [1, 2, 3, 4]
-                      .map((y) =>
-                          DropdownMenuItem(value: y, child: Text('$y Year')))
+                      .map((y) => DropdownMenuItem(
+                            value: y,
+                            child: Text(
+                              '$y Year',
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ))
                       .toList(),
                   onChanged: (v) => setState(() => _manualYear = v ?? 1),
                 ),
@@ -780,11 +1285,18 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: _manualSection,
             decoration: const InputDecoration(labelText: 'Section'),
             items: ['A', 'B', 'C', 'D']
-                .map((s) =>
-                    DropdownMenuItem(value: s, child: Text('Section $s')))
+                .map((s) => DropdownMenuItem(
+                      value: s,
+                      child: Text(
+                        'Section $s',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ))
                 .toList(),
             onChanged: (v) => setState(() => _manualSection = v ?? 'A'),
           ),
@@ -821,6 +1333,22 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isTablet = context.r.isTablet;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: const Text('Unified Registration Panel', style: TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold)),
+      ),
+      body: isTablet ? _buildTabletLayout() : _buildMobileLayout(),
     );
   }
 }

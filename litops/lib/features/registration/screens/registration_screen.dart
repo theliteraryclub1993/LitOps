@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/models/models.dart';
+import '../../../core/enums/enums.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/widgets/top_notification.dart';
 import '../../../core/supabase/supabase_config.dart';
@@ -14,15 +17,30 @@ import '../../events/screens/event_detail_screen.dart';
 import '../../events/screens/events_screen.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../attendance/screens/attendance_screen.dart';
+import '../../../core/utils/app_utils.dart';
 
 final activeEventsProvider = FutureProvider<List<Event>>((ref) async {
   final data = await SupabaseConfig.client
       .from(SupabaseTables.events)
       .select()
       .inFilter('status', ['registration_open', 'ongoing'])
-      .order('created_at', ascending: false);
+      .order('title');
   return (data as List).map((e) => Event.fromJson(e)).toList();
 });
+
+const _branchDisplayNames = {
+  'CS': 'Computer Science',
+  'IS': 'Information Science',
+  'CI': 'Artificial Intelligence and Machine Learning',
+  'CB': 'Computer Science and Business Studies',
+  'RI': 'Robotics & Intelligence',
+  'EC': 'Electronics & Communication',
+  'VL': 'VLSI',
+  'EI': 'Electronics & Instrumentation',
+  'EE': 'Electrical & Electronics',
+  'CV': 'Civil',
+  'ME': 'Mechanical',
+};
 
 class RegistrationScreen extends ConsumerStatefulWidget {
   final Event? initialEvent;
@@ -33,84 +51,101 @@ class RegistrationScreen extends ConsumerStatefulWidget {
 }
 
 class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  
-  // Active state
+  // Step 1 state
   Event? _selectedEvent;
   List<Event> _events = [];
-  bool _loadingEvents = false;
-  bool _saving = false;
-  bool _searchingStudent = false;
-  bool _scanEnabled = true;
-
-  // Form fields
+  bool _loadingEvents = true;
+  
+  // Team name = first participant's department
+  String? _teamDepartment;
+  
+  // Participants list
+  List<Student?> _participants = [];
+  
+  // Active slot for adding participants
+  int _activeSlotIndex = 0;
+  
+  // Search/autocomplete variables
+  final _searchController = TextEditingController();
+  List<Student> _searchSuggestions = [];
+  Timer? _debounceTimer;
+  bool _searching = false;
+  bool _loadingSuggestions = false;
+  
+  // UI state
+  int _currentStep = 0; // 0: select event, 1: add participants, 2: review & submit
+  int _registrationMode = 0; // 0: barcode, 1: manual
+  
+  // Form state (for manual entry if student not found)
   final _formKey = GlobalKey<FormState>();
-  final _usnController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  
   String _branch = 'CS';
   int _year = 1;
-  String _section = 'A';
-
+  Student? _selectedStudentFromSearch;
+  bool _isNewStudent = false;
+  
+  // Submission state
+  bool _submitting = false;
+  bool _scanEnabled = true;
+  
   final List<String> _branches = [
     'CS', 'IS', 'CI', 'CB', 'RI', 'EC', 'VL', 'EI', 'EE', 'CV', 'ME'
   ];
 
-  // Team registration variables
-  final _teamNameController = TextEditingController();
-  List<Student?> _participants = [];
-  int _activeSlotIndex = 0;
-  bool _isNewStudent = false;
-
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _selectedEvent = widget.initialEvent;
-    _initializeSlots();
     _loadEvents();
+    _searchController.addListener(_onSearchUsnChanged);
+  }
+
+  void _onSearchUsnChanged() {
+    final usn = _searchController.text.trim().toUpperCase();
+    final usnRegExp = RegExp(r'^\d[A-Z]{2}\d{2}[A-Z]{2}\d{3}$');
+    if (usnRegExp.hasMatch(usn)) {
+      final yearPart = usn.substring(3, 5);
+      final branchPart = usn.substring(5, 7);
+      
+      final admissionYear = int.tryParse("20$yearPart");
+      int? inferredYear;
+      if (admissionYear != null) {
+        final now = DateTime.now();
+        final currentYear = now.year;
+        final currentMonth = now.month;
+        int studyYear = currentYear - admissionYear;
+        if (currentMonth >= 8) {
+          studyYear += 1;
+        }
+        if (studyYear >= 1 && studyYear <= 4) {
+          inferredYear = studyYear;
+        }
+      }
+      
+      setState(() {
+        if (_branches.contains(branchPart)) {
+          _branch = branchPart;
+        }
+        if (inferredYear != null) {
+          _year = inferredYear;
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
-    _usnController.dispose();
+    _searchController.removeListener(_onSearchUsnChanged);
+    _searchController.dispose();
+    _debounceTimer?.cancel();
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _teamNameController.dispose();
     super.dispose();
   }
 
-  void _initializeSlots() {
-    if (_selectedEvent == null) {
-      _participants = [];
-      _activeSlotIndex = 0;
-    } else {
-      int size = _selectedEvent!.isTeamEvent ? _selectedEvent!.teamSize : 1;
-      _participants = List.filled(size, null);
-      _activeSlotIndex = 0;
-    }
-    _clearStudentForm();
-  }
-
-  void _clearStudentForm() {
-    _usnController.clear();
-    _nameController.clear();
-    _phoneController.clear();
-    _emailController.clear();
-    setState(() {
-      _branch = 'CS';
-      _year = 1;
-      _section = 'A';
-      _isNewStudent = false;
-    });
-  }
-
   Future<void> _loadEvents() async {
-    setState(() => _loadingEvents = true);
     try {
       final data = await SupabaseConfig.client
           .from(SupabaseTables.events)
@@ -120,176 +155,233 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
       
       setState(() {
         _events = (data as List).map((e) => Event.fromJson(e)).toList();
-        if (_selectedEvent != null) {
-          _selectedEvent = _events.firstWhere((e) => e.id == _selectedEvent!.id, orElse: () => _selectedEvent!);
-          _initializeSlots();
+        if (widget.initialEvent != null) {
+          _selectedEvent = _events.firstWhere(
+            (e) => e.id == widget.initialEvent!.id,
+            orElse: () => widget.initialEvent!,
+          );
         }
+        _loadingEvents = false;
       });
     } catch (e) {
       debugPrint('Error loading events: $e');
-    } finally {
       setState(() => _loadingEvents = false);
     }
   }
 
-  // Lookup student details by USN in the master list
-  Future<void> _searchStudent(String usn) async {
-    if (usn.trim().isEmpty) return;
-    
-    setState(() {
-      _searchingStudent = true;
-      _scanEnabled = false;
-    });
+  void _initializeSlots() {
+    if (_selectedEvent == null) return;
+    int size = _selectedEvent!.isTeamEvent ? _selectedEvent!.teamSize : 1;
+    _participants = List.filled(size, null);
+    _teamDepartment = null;
+    _activeSlotIndex = 0;
+    _clearSearchAndForm();
+  }
 
-    final searchUsn = usn.trim().toUpperCase();
+  void _clearSearchAndForm() {
+    _searchController.clear();
+    _nameController.clear();
+    _phoneController.clear();
+    _emailController.clear();
+    setState(() {
+      _searchSuggestions = [];
+      _selectedStudentFromSearch = null;
+      _branch = 'CS';
+      _year = 1;
+      _isNewStudent = false;
+      _scanEnabled = true;
+    });
+  }
+
+  Future<void> _searchStudents(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchSuggestions = [];
+        _loadingSuggestions = false;
+      });
+      return;
+    }
+
+    final searchQuery = query.trim().toUpperCase();
+    setState(() => _loadingSuggestions = true);
 
     try {
-      // First try student_master
+      // First search in student_master
       final studentData = await SupabaseConfig.client
           .from(SupabaseTables.studentMaster)
           .select()
-          .ilike('usn', searchUsn)
-          .eq('status', 'active')
-          .maybeSingle();
+          .ilike('usn', '%$searchQuery%')
+          .limit(10);
 
-      Student? student;
-      if (studentData != null) {
-        student = Student.fromJson(studentData);
-      } else {
-        // Try profiles table for club members
+      List<Student> students = (studentData as List).map((s) => Student.fromJson(s)).toList();
+
+      // Then search in profiles
+      if (students.length < 10) {
         final profileData = await SupabaseConfig.client
             .from(SupabaseTables.profiles)
             .select()
-            .ilike('usn', searchUsn)
-            .maybeSingle();
-        
-        if (profileData != null) {
-          final profile = Profile.fromJson(profileData);
-          // Try to insert, if duplicate key exists, just fetch existing student
-          try {
-            final studentInsertData = <String, dynamic>{
-              'usn': profile.usn ?? searchUsn,
-              'name': profile.fullName,
-              'branch': profile.branch ?? 'CS',
-              'year': profile.year ?? 1,
-              'phone': profile.phone,
-              'email': profile.email,
-              'status': 'active',
-            };
-            final newStudentRows = await SupabaseConfig.client
-                .from(SupabaseTables.studentMaster)
-                .insert(studentInsertData)
-                .select();
-            if (newStudentRows.isNotEmpty) {
-              student = Student.fromJson(newStudentRows[0]);
-            }
-          } catch (e) {
-            // Duplicate key error, fetch the existing student
-            final existingStudentData = await SupabaseConfig.client
-                .from(SupabaseTables.studentMaster)
-                .select()
-                .ilike('usn', searchUsn)
-                .eq('status', 'active')
-                .maybeSingle();
-            if (existingStudentData != null) {
-              student = Student.fromJson(existingStudentData);
-            }
-          }
-        }
-      }
-          
-      if (student != null) {
-        // Check if student is already added in another slot for this team
-        if (_participants.any((p) => p?.id == student!.id)) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Student already added to the participant list'),
-                backgroundColor: LitColors.amber,
-              ),
-            );
-          }
-          _clearStudentForm();
-        } else {
-          // Pre-fill the form with existing student details
-          _usnController.text = student!.usn;
-          _nameController.text = student!.name;
-          _phoneController.text = student!.phone ?? '';
-          _emailController.text = student!.email ?? '';
-          setState(() {
-            _branch = _branches.contains(student!.branch.toUpperCase()) ? student!.branch.toUpperCase() : _branches.first;
-            _year = student!.year;
-            _section = student!.section ?? 'A';
-            _isNewStudent = false;
-          });
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Found student: ${student!.name}. Details auto-filled!'),
-                backgroundColor: LitColors.moss,
-                duration: const Duration(seconds: 2),
+            .ilike('usn', '%$searchQuery%')
+            .limit(10 - students.length);
+
+        for (var p in profileData) {
+          final profile = Profile.fromJson(p);
+          final exists = students.any((s) => s.usn == profile.usn);
+          if (!exists && profile.usn != null) {
+            students.add(
+              Student(
+                id: '-1',
+                usn: profile.usn!,
+                name: profile.fullName,
+                branch: profile.branch ?? 'CS',
+                year: profile.year ?? 1,
+                phone: profile.phone,
+                email: profile.email,
+                status: StudentStatus.active,
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
               ),
             );
           }
         }
-      } else {
-        // If not found, pre-fill USN and let user enter other details manually
-        _clearStudentForm();
-        _usnController.text = searchUsn;
-        setState(() {
-          _isNewStudent = true;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Student not found in database. Please enter details manually.'),
-              backgroundColor: LitColors.amber,
-            ),
-          );
-        }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Search error: $e'), backgroundColor: LitColors.coral),
-        );
-      }
-    } finally {
+
       setState(() {
-        _searchingStudent = false;
-        _scanEnabled = true;
+        _searchSuggestions = students;
+        _loadingSuggestions = false;
+      });
+    } catch (e) {
+      debugPrint('Search error: $e');
+      setState(() {
+        _searchSuggestions = [];
+        _loadingSuggestions = false;
       });
     }
   }
 
-  // Save/Update student in StudentMaster and return the Student object
-  Future<Student?> _upsertStudent() async {
-    final name = _nameController.text.trim();
-    final usn = _usnController.text.trim().toUpperCase();
-    
-    if (name.isEmpty || usn.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Name and USN are required fields'), backgroundColor: LitColors.coral),
-      );
-      return null;
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _searchStudents(query);
+    });
+  }
+
+  Future<void> _selectStudentFromSearch(Student student) async {
+    setState(() {
+      _selectedStudentFromSearch = student;
+      _searchController.text = student.usn;
+      _searchSuggestions = [];
+      _nameController.text = student.name;
+      _phoneController.text = student.phone ?? '';
+      _emailController.text = student.email ?? '';
+      _branch = _branches.contains(student.branch.toUpperCase()) 
+          ? student.branch.toUpperCase() 
+          : _branches.first;
+      _year = student.year;
+      _isNewStudent = false;
+    });
+  }
+
+  Future<void> _confirmParticipant() async {
+    if (_selectedEvent == null) return;
+
+    // For team events, check department matching
+    if (_selectedEvent!.isTeamEvent && _teamDepartment != null) {
+      if (_branch != _teamDepartment) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('This team already belongs to ${_branchDisplayNames[_teamDepartment]}. Only ${_branchDisplayNames[_teamDepartment]} students can be added.'),
+              backgroundColor: LitColors.amber,
+            ),
+          );
+        }
+        return;
+      }
     }
 
+    Student? student;
+
+    if (_selectedStudentFromSearch != null) {
+      final modifiedStudent = _selectedStudentFromSearch!.copyWith(
+        branch: _branch,
+        year: _year,
+      );
+      // If we have a real student from DB
+      if (modifiedStudent.id != '-1') {
+        student = modifiedStudent;
+        try {
+          await SupabaseConfig.client
+              .from(SupabaseTables.studentMaster)
+              .update({
+                'branch': _branch,
+                'year': _year,
+              })
+              .eq('id', student.id);
+        } catch (e) {
+          debugPrint('Error updating student master in DB: $e');
+        }
+      } else {
+        // It's a profile student, we need to upsert to student_master
+        student = await _upsertStudentFromProfile(modifiedStudent);
+      }
+    } else {
+      // Manual entry, must validate and upsert
+      if (!_formKey.currentState!.validate()) return;
+      student = await _upsertStudentManual();
+    }
+
+    if (student == null) return;
+
+    // Check if already in participants
+    if (_participants.any((p) => p?.id == student!.id)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${student.name} is already added!'),
+            backgroundColor: LitColors.amber,
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _participants[_activeSlotIndex] = student;
+      
+      // Set team department on first participant
+      if (_selectedEvent!.isTeamEvent && _activeSlotIndex == 0) {
+        _teamDepartment = student!.branch;
+      }
+
+      // Move to next empty slot
+      for (int i = 0; i < _participants.length; i++) {
+        if (_participants[i] == null) {
+          _activeSlotIndex = i;
+          break;
+        }
+      }
+      
+      _clearSearchAndForm();
+    });
+  }
+
+  Future<Student?> _upsertStudentFromProfile(Student tempStudent) async {
     try {
+      final studentData = {
+        'usn': tempStudent.usn,
+        'name': tempStudent.name,
+        'branch': tempStudent.branch,
+        'year': tempStudent.year,
+        'phone': tempStudent.phone,
+        'email': tempStudent.email,
+        'status': 'active',
+      };
+
       final existing = await SupabaseConfig.client
           .from(SupabaseTables.studentMaster)
           .select()
-          .ilike('usn', usn)
+          .ilike('usn', tempStudent.usn)
           .maybeSingle();
-
-      final studentData = {
-        'usn': usn,
-        'name': name,
-        'branch': _branch,
-        'year': _year,
-        'phone': _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
-        'email': _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
-        'status': 'active',
-      };
 
       if (existing != null) {
         final updated = await SupabaseConfig.client
@@ -308,122 +400,201 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         return Student.fromJson(inserted);
       }
     } catch (e) {
-      debugPrint('Error upserting student: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save student details: $e'), backgroundColor: LitColors.coral),
-        );
-      }
+      debugPrint('Upsert error: $e');
       return null;
     }
   }
 
-  // Lock a participant into the selected team slot
-  Future<void> _confirmParticipantForSlot() async {
-    if (_selectedEvent == null) return;
+  Future<Student?> _upsertStudentManual() async {
+    final name = _nameController.text.trim();
+    final usn = _searchController.text.trim().toUpperCase();
     
-    if (!_formKey.currentState!.validate()) return;
+    if (name.isEmpty || usn.isEmpty) return null;
 
-    setState(() => _saving = true);
-    final student = await _upsertStudent();
-    setState(() => _saving = false);
+    try {
+      final studentData = {
+        'usn': usn,
+        'name': name,
+        'branch': _branch,
+        'year': _year,
+        'phone': _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        'email': _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
+        'status': 'active',
+      };
 
-    if (student == null) return;
+      final existing = await SupabaseConfig.client
+          .from(SupabaseTables.studentMaster)
+          .select()
+          .ilike('usn', usn)
+          .maybeSingle();
 
-    setState(() {
-      _participants[_activeSlotIndex] = student;
-      _clearStudentForm();
-      
-      if (_activeSlotIndex == 0 && _teamNameController.text.trim().isEmpty) {
-        _teamNameController.text = student.branch;
+      if (existing != null) {
+        final updated = await SupabaseConfig.client
+            .from(SupabaseTables.studentMaster)
+            .update(studentData)
+            .eq('id', existing['id'])
+            .select()
+            .single();
+        return Student.fromJson(updated);
+      } else {
+        final inserted = await SupabaseConfig.client
+            .from(SupabaseTables.studentMaster)
+            .insert(studentData)
+            .select()
+            .single();
+        return Student.fromJson(inserted);
       }
-
-      _moveToNextEmptySlot();
-    });
-  }
-
-  void _moveToNextEmptySlot() {
-    for (int i = 0; i < _participants.length; i++) {
-      if (_participants[i] == null) {
-        setState(() {
-          _activeSlotIndex = i;
-        });
-        return;
-      }
+    } catch (e) {
+      debugPrint('Upsert error: $e');
+      return null;
     }
-    setState(() {
-      _activeSlotIndex = _participants.length;
-    });
   }
 
-  void _removeParticipantFromSlot(int index) {
+  void _removeParticipant(int index) {
     setState(() {
       _participants[index] = null;
-      if (_activeSlotIndex > index || _activeSlotIndex == _participants.length) {
-        _activeSlotIndex = index;
+      // Reset team department if removing first participant
+      if (_selectedEvent!.isTeamEvent && index == 0) {
+        _teamDepartment = null;
       }
+      _activeSlotIndex = index;
     });
   }
 
-  // Final submit registration to DB
+  void _editStudentBranchAndYear(int index) {
+    final student = _participants[index];
+    if (student == null) return;
+
+    String selectedBranch = student.branch;
+    int selectedYear = student.year;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: LitColors.clay,
+              title: Text(
+                'Edit Details for ${student.name}',
+                style: GoogleFonts.fredoka(color: LitColors.bone, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: selectedBranch,
+                    dropdownColor: LitColors.clay,
+                    decoration: const InputDecoration(
+                      labelText: 'Branch',
+                      labelStyle: TextStyle(color: LitColors.ash),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: LitColors.clay2)),
+                    ),
+                    items: _branches
+                        .map((b) => DropdownMenuItem(
+                              value: b,
+                              child: Text(
+                                _branchDisplayNames[b] ?? b,
+                                style: const TextStyle(color: LitColors.bone),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setDialogState(() => selectedBranch = v);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    value: selectedYear,
+                    dropdownColor: LitColors.clay,
+                    decoration: const InputDecoration(
+                      labelText: 'Year',
+                      labelStyle: TextStyle(color: LitColors.ash),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: LitColors.clay2)),
+                    ),
+                    items: [1, 2, 3, 4]
+                        .map((y) => DropdownMenuItem(
+                              value: y,
+                              child: Text(
+                                '$y Year',
+                                style: const TextStyle(color: LitColors.bone),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setDialogState(() => selectedYear = v);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: LitColors.ash)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final updatedStudent = student.copyWith(
+                      branch: selectedBranch,
+                      year: selectedYear,
+                    );
+                    
+                    setState(() {
+                      _participants[index] = updatedStudent;
+                    });
+                    
+                    Navigator.pop(context);
+
+                    try {
+                      await SupabaseConfig.client
+                          .from(SupabaseTables.studentMaster)
+                          .update({
+                            'branch': selectedBranch,
+                            'year': selectedYear,
+                          })
+                          .eq('id', student.id);
+                    } catch (e) {
+                      debugPrint('Error updating student details in DB: $e');
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: LitColors.moss,
+                    foregroundColor: const Color(0xFF1A0D05),
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _submitRegistration() async {
     if (_selectedEvent == null) return;
-
-    if (_selectedEvent!.isTeamEvent) {
-      if (_participants.any((p) => p == null)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please fill all team member slots before registering'), backgroundColor: LitColors.amber),
-        );
-        return;
-      }
-      if (_teamNameController.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a team name'), backgroundColor: LitColors.amber),
-        );
-        return;
-      }
-
-      // Check if any team member is already registered for this event
-      for (final student in _participants) {
-        if (student != null) {
-          final duplicate = await SupabaseConfig.client
-              .from(SupabaseTables.registrations)
-              .select('id')
-              .eq('event_id', _selectedEvent!.id)
-              .eq('student_id', student.id)
-              .eq('is_cancelled', false)
-              .maybeSingle();
-
-          if (duplicate != null) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${student.name} is already registered for this event!'), backgroundColor: LitColors.amber),
-              );
-            }
-            setState(() => _saving = false);
-            return;
-          }
-        }
-      }
-    } else {
-      if (_participants.isEmpty || _participants[0] == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please fill participant details'), backgroundColor: LitColors.amber),
-        );
-        return;
-      }
-    }
-
-    setState(() => _saving = true);
+    
+    setState(() => _submitting = true);
 
     try {
       final profile = ref.read(currentProfileProvider);
       final userId = profile!.id;
-      final method = _tabController.index == 0 ? 'barcode' : 'manual';
+      final method = _registrationMode == 0 ? 'barcode' : 'manual';
 
       if (!_selectedEvent!.isTeamEvent) {
         final student = _participants[0]!;
 
+        // Check duplicates
         final duplicate = await SupabaseConfig.client
             .from(SupabaseTables.registrations)
             .select('id')
@@ -435,20 +606,24 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         if (duplicate != null) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Student is already registered for this event'), backgroundColor: LitColors.amber),
+              const SnackBar(content: Text('Student already registered!'), backgroundColor: LitColors.amber),
             );
           }
-          setState(() => _saving = false);
+          setState(() => _submitting = false);
           return;
         }
 
         // Insert registration
-        final regData = await SupabaseConfig.client.from(SupabaseTables.registrations).insert({
-          'event_id': _selectedEvent!.id,
-          'student_id': student.id,
-          'registration_method': method,
-          'registered_by': userId,
-        }).select().single();
+        final regData = await SupabaseConfig.client
+            .from(SupabaseTables.registrations)
+            .insert({
+              'event_id': _selectedEvent!.id,
+              'student_id': student.id,
+              'registration_method': method,
+              'registered_by': userId,
+            })
+            .select()
+            .single();
 
         // Auto mark attendance
         final existingAttendance = await SupabaseConfig.client
@@ -468,10 +643,14 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         }
 
         if (mounted) {
-          showTopNotification(context, 'Successfully registered ${student.name} for ${_selectedEvent!.name}!', type: NotificationType.success);
+          showTopNotification(
+            context,
+            'Successfully registered ${student.name} for ${_selectedEvent!.name}!',
+            type: NotificationType.success,
+          );
         }
       } else {
-        final teamName = _teamNameController.text.trim();
+        final teamName = _branchDisplayNames[_teamDepartment] ?? _teamDepartment!;
         final captain = _participants[0]!;
 
         final teamData = await SupabaseConfig.client
@@ -491,7 +670,6 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
           final student = _participants[i]!;
           final isCaptain = (i == 0);
 
-          // First, check if team member already exists (shouldn't, but just in case)
           final existingTeamMember = await SupabaseConfig.client
               .from(SupabaseTables.teamMembers)
               .select('id')
@@ -529,7 +707,6 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
             regId = duplicate['id'];
           }
 
-          // Auto mark attendance
           final existingAttendance = await SupabaseConfig.client
               .from(SupabaseTables.attendance)
               .select('id')
@@ -548,7 +725,11 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         }
 
         if (mounted) {
-          showTopNotification(context, 'Successfully registered team "$teamName" for ${_selectedEvent!.name}!', type: NotificationType.success);
+          showTopNotification(
+            context,
+            'Successfully registered team "$teamName" for ${_selectedEvent!.name}!',
+            type: NotificationType.success,
+          );
         }
       }
 
@@ -559,9 +740,10 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
       ref.invalidate(eventAttendanceProvider(_selectedEvent!.id));
       ref.invalidate(activeEventsProvider);
       
+      // Reset to step 0
       setState(() {
+        _currentStep = 0;
         _initializeSlots();
-        _teamNameController.clear();
       });
     } catch (e) {
       if (mounted) {
@@ -570,7 +752,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
         );
       }
     } finally {
-      setState(() => _saving = false);
+      setState(() => _submitting = false);
     }
   }
 
@@ -579,11 +761,9 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
     final role = ref.watch(currentUserRoleProvider);
     final profile = ref.watch(currentProfileProvider);
     
-    // Allow access if:
-    // 1. User has canRegisterParticipants or canManualEntry
-    // 2. Or user is in 1st, 2nd, 3rd, or 4th year (any year)
     final year = profile?.year;
     final isAllowed = role.canRegisterParticipants || role.canManualEntry || (year != null && year >= 1 && year <= 4);
+    
     if (!isAllowed) {
       return const Scaffold(
         backgroundColor: LitColors.void_,
@@ -614,401 +794,527 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                   title: 'No Active Events',
                   subtitle: 'There are no ongoing or registration-open events.',
                 )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isDesktop = constraints.maxWidth >= 950;
-                    return SingleChildScrollView(
-                      padding: const EdgeInsets.only(left: 16, right: 16, top: 10, bottom: 130),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildEventSelectorCard(),
-                          const SizedBox(height: 16),
-                          if (_selectedEvent != null)
-                            isDesktop ? _buildDesktopLayout() : _buildMobileLayout(),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+              : _currentStep == 0
+                  ? _buildStepSelectEvent()
+                  : _currentStep == 1
+                      ? _buildStepAddParticipants()
+                      : _buildStepReview(),
     );
   }
 
-  Widget _buildDesktopLayout() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 4,
-          child: Column(
-            children: [
-              _buildEventDetailsSummary(),
-              const SizedBox(height: 14),
-              if (_selectedEvent!.isTeamEvent) _buildTeamNameCard(),
-              const SizedBox(height: 14),
-              _buildParticipantSlotsCard(),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          flex: 6,
-          child: Column(
-            children: [
-              if (_activeSlotIndex < _participants.length) ...[
-                _buildRegistrationFormWorkspace(),
-              ] else ...[
-                _buildAllSlotsFilledCard(),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMobileLayout() {
-    return Column(
-      children: [
-        _buildEventDetailsSummary(),
-        const SizedBox(height: 14),
-        if (_selectedEvent!.isTeamEvent) ...[
-          _buildTeamNameCard(),
-          const SizedBox(height: 14),
-        ],
-        _buildParticipantSlotsCard(),
-        const SizedBox(height: 14),
-        if (_activeSlotIndex < _participants.length) ...[
-          _buildRegistrationFormWorkspace(),
-        ] else ...[
-          _buildAllSlotsFilledCard(),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildEventSelectorCard() {
-    return ClayCard(
+  Widget _buildStepSelectEvent() {
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Select Event',
-            style: GoogleFonts.fredoka(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: LitColors.bone,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ClayInsetCard(
-            borderRadius: 14,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: DropdownButtonFormField<Event>(
-              value: _selectedEvent,
-              dropdownColor: LitColors.clay,
-              hint: Text('Choose an active event', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 13)),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-              items: _events.map((e) {
-                return DropdownMenuItem<Event>(
-                  value: e,
-                  child: Text(
-                    '${e.name} (${e.isTeamEvent ? "Team Size ${e.teamSize}" : "Solo"})',
-                    style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                );
-              }).toList(),
-              onChanged: (event) {
-                setState(() {
-                  _selectedEvent = event;
-                  _initializeSlots();
-                });
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEventDetailsSummary() {
-    if (_selectedEvent == null) return const SizedBox.shrink();
-    
-    final categoryColor = AppTheme.getCategoryColor(_selectedEvent!.category.value);
-    
-    return ClayCard(
-      borderColor: categoryColor.withOpacity(0.2),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: categoryColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _selectedEvent!.category.label,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: categoryColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              StatusChip(label: _selectedEvent!.status.label),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            _selectedEvent!.name,
+            'Step 1: Select Event',
             style: GoogleFonts.fredoka(
               fontWeight: FontWeight.bold,
               fontSize: 18,
               color: LitColors.bone,
             ),
           ),
-          const SizedBox(height: 6),
-          if (_selectedEvent!.description != null && _selectedEvent!.description!.isNotEmpty)
-            Text(
-              _selectedEvent!.description!,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11.5),
-            ),
-          const Divider(height: 20, color: Color(0xFF262220)),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildDetailMiniCol(Icons.location_on_outlined, 'Venue', _selectedEvent!.venue ?? 'TBA'),
-              _buildDetailMiniCol(
-                Icons.groups_outlined,
-                'Type',
-                _selectedEvent!.isTeamEvent ? 'Team (${_selectedEvent!.teamSize})' : 'Solo',
-              ),
-              _buildDetailMiniCol(
-                Icons.people_outline,
-                'Limit',
-                _selectedEvent!.capacity != null ? '${_selectedEvent!.capacity}' : 'Unlimited',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailMiniCol(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: LitColors.ash),
-        const SizedBox(width: 6),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: GoogleFonts.plusJakartaSans(fontSize: 9, color: LitColors.ash)),
-            Text(value, style: GoogleFonts.plusJakartaSans(fontSize: 11, fontWeight: FontWeight.bold, color: LitColors.bone)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTeamNameCard() {
-    return ClayCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          const SizedBox(height: 4),
           Text(
-            'Team Configuration',
-            style: GoogleFonts.fredoka(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: LitColors.bone,
+            'Choose an ongoing event to register for',
+            style: GoogleFonts.plusJakartaSans(
+              color: LitColors.ash,
+              fontSize: 12,
             ),
           ),
-          const SizedBox(height: 12),
-          ClayTextField(
-            controller: _teamNameController,
-            hintText: 'Team Name (e.g. Ground Shakers)',
-            prefixIcon: const Icon(Icons.people_alt_outlined),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildParticipantSlotsCard() {
-    return ClayCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _selectedEvent!.isTeamEvent ? 'Team Members Slots' : 'Participant Details',
-            style: GoogleFonts.fredoka(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: LitColors.bone,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _participants.length,
+            itemCount: _events.length,
             itemBuilder: (context, index) {
-              final student = _participants[index];
-              final isActiveSlot = index == _activeSlotIndex;
-              final roleName = index == 0 ? 'Captain' : 'Member ${index + 1}';
+              final event = _events[index];
+              final isSelected = _selectedEvent?.id == event.id;
+              final categoryColor = AppTheme.getCategoryColor(event.category.value);
               
-              return ClayCard(
-                margin: const EdgeInsets.only(bottom: 8),
-                color: student != null
-                    ? const Color(0xFF11261B)
-                    : (isActiveSlot ? const Color(0xFF2B1C15) : LitColors.clay2),
-                borderColor: isActiveSlot
-                    ? LitColors.ember
-                    : (student != null ? LitColors.moss : null),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: student != null
-                          ? LitColors.moss
-                          : (isActiveSlot ? LitColors.ember : LitColors.clay3),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${index + 1}',
-                      style: const TextStyle(color: Color(0xFF1A0D05), fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
-                  ),
-                  title: Text(
-                    student != null ? student.name : (isActiveSlot ? 'Awaiting Scan / Fill...' : 'Empty Slot'),
-                    style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: student != null
-                          ? LitColors.moss
-                          : (isActiveSlot ? LitColors.ember : LitColors.ash),
-                    ),
-                  ),
-                  subtitle: student != null 
-                      ? Text('${student.usn} • ${student.branch} • ${student.year} Yr', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11))
-                      : Text(roleName, style: GoogleFonts.plusJakartaSans(fontSize: 11, color: LitColors.ash)),
-                  trailing: student != null
-                      ? IconButton(
-                          icon: const Icon(Icons.remove_circle_outline_rounded, color: LitColors.coral, size: 20),
-                          onPressed: () => _removeParticipantFromSlot(index),
-                        )
-                      : null,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: GestureDetector(
                   onTap: () {
-                    if (student == null) {
-                      setState(() {
-                        _activeSlotIndex = index;
-                        _clearStudentForm();
-                      });
-                    }
+                    setState(() {
+                      _selectedEvent = event;
+                      _initializeSlots();
+                      _currentStep = 1;
+                    });
                   },
+                  child: ClayCard(
+                    borderColor: isSelected ? categoryColor : null,
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: categoryColor.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                event.category.label,
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: categoryColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            StatusChip(label: event.status.label),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          event.name,
+                          style: GoogleFonts.fredoka(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: LitColors.bone,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: event.isTeamEvent 
+                                    ? LitColors.ember.withOpacity(0.15)
+                                    : LitColors.moss.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                event.isTeamEvent 
+                                    ? 'Team Event (${event.teamSize})'
+                                    : 'Individual Event',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: event.isTeamEvent ? LitColors.ember : LitColors.moss,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_on_outlined, size: 14, color: LitColors.ash),
+                                const SizedBox(width: 4),
+                                Text(
+                                  event.venue ?? 'TBA',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: LitColors.ash,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (event.eventDate != null) ...[
+                              const SizedBox(width: 12),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.access_time_outlined, size: 14, color: LitColors.ash),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    AppUtils.formatDate(event.eventDate!),
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: LitColors.ash,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },
           ),
+          const SizedBox(height: 120),
         ],
       ),
     );
   }
 
-  Widget _buildRegistrationFormWorkspace() {
-    final label = _selectedEvent!.isTeamEvent 
-        ? (_activeSlotIndex == 0 ? 'Team Captain' : 'Team Member ${_activeSlotIndex + 1}')
-        : 'Participant';
-        
-    return ClayCard(
-      padding: EdgeInsets.zero,
+  Widget _buildStepAddParticipants() {
+    final isTeam = _selectedEvent!.isTeamEvent;
+    final allSlotsFilled = _participants.every((p) => p != null);
+    
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
       child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: LitColors.ember.withOpacity(0.08),
-              borderRadius: const BorderRadius.only(topLeft: Radius.circular(18), topRight: Radius.circular(18)),
-            ),
-            child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                const Icon(Icons.edit_note_rounded, color: LitColors.ember, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Form for $label',
-                  style: GoogleFonts.fredoka(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: LitColors.ember,
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, color: LitColors.bone),
+                  onPressed: () => setState(() => _currentStep = 0),
+                ),
+                Expanded(
+                  child: Text(
+                    'Step 2: Add Participants',
+                    style: GoogleFonts.fredoka(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: LitColors.bone,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          
-          // Custom Styled TabBar
-          TabBar(
-            controller: _tabController,
-            indicatorSize: TabBarIndicatorSize.tab,
-            dividerColor: const Color(0xFF262220),
-            indicatorColor: LitColors.ember,
-            labelColor: LitColors.ember,
-            unselectedLabelColor: LitColors.ash,
-            labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 12),
-            unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
-            tabs: const [
-              Tab(icon: Icon(Icons.qr_code_scanner_rounded, size: 18), text: 'Barcode Scan'),
-              Tab(icon: Icon(Icons.text_snippet_rounded, size: 18), text: 'Manual Input'),
-            ],
-            onTap: (index) {
-              _clearStudentForm();
-            },
-          ),
-          
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              height: 440,
-              child: TabBarView(
-                controller: _tabController,
-                physics: const NeverScrollableScrollPhysics(),
+            const SizedBox(height: 16),
+            ClayCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildBarcodeScannerSection(),
-                  _buildManualFormSection(),
+                  Text(
+                    _selectedEvent!.name,
+                    style: GoogleFonts.fredoka(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: LitColors.bone,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Text(
+                        isTeam ? 'Team Size: ${_participants.length}' : 'Individual Event',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: LitColors.ash,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 100,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: LitColors.clay3,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: FractionallySizedBox(
+                          widthFactor: _participants.where((p) => p != null).length / _participants.length,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: LitColors.ember,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_participants.where((p) => p != null).length}/${_participants.length}',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: LitColors.ember,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(height: 16),
+            if (isTeam) ...[
+              ClayCard(
+                borderColor: LitColors.moss,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Team Name (Department)',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: LitColors.ash,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ClayInsetCard(
+                      borderRadius: 12,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _teamDepartment,
+                        dropdownColor: LitColors.clay,
+                        hint: Text('Select Team Department', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        items: _branches.map((b) => DropdownMenuItem<String>(
+                          value: b,
+                          child: Text(
+                            _branchDisplayNames[b] ?? b,
+                            style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        )).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _teamDepartment = value;
+                              // Clear participants that don't match the new department
+                              for (int i = 0; i < _participants.length; i++) {
+                                if (_participants[i] != null && _participants[i]!.branch != value) {
+                                  _participants[i] = null;
+                                }
+                              }
+                              // Reset active slot index to first empty slot
+                              _activeSlotIndex = 0;
+                              for (int i = 0; i < _participants.length; i++) {
+                                if (_participants[i] == null) {
+                                  _activeSlotIndex = i;
+                                  break;
+                                }
+                              }
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            ClayCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isTeam ? 'Team Members' : 'Participant',
+                    style: GoogleFonts.fredoka(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: LitColors.bone,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _participants.length,
+                    itemBuilder: (context, index) {
+                      final student = _participants[index];
+                      final isActive = index == _activeSlotIndex && student == null;
+                      final roleName = index == 0 ? 'Captain' : 'Member ${index + 1}';
+                      
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: ClayCard(
+                          color: student != null
+                              ? const Color(0xFF11261B)
+                              : (isActive ? const Color(0xFF2B1C15) : LitColors.clay2),
+                          borderColor: isActive
+                              ? LitColors.ember
+                              : (student != null ? LitColors.moss : null),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            leading: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: student != null
+                                    ? LitColors.moss
+                                    : (isActive ? LitColors.ember : LitColors.clay3),
+                                shape: BoxShape.circle,
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                '${index + 1}',
+                                style: const TextStyle(color: Color(0xFF1A0D05), fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                            title: Text(
+                              student != null 
+                                  ? student.name 
+                                  : (isActive ? 'Add $roleName' : 'Empty Slot'),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: student != null
+                                    ? LitColors.moss
+                                    : (isActive ? LitColors.ember : LitColors.ash),
+                              ),
+                            ),
+                            subtitle: student != null
+                                ? Text('${student.usn} • ${student.branch} • ${student.year} Yr', 
+                                    style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11))
+                                : Text(roleName, style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11)),
+                            trailing: student != null
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_outlined, color: LitColors.moss, size: 20),
+                                        onPressed: () => _editStudentBranchAndYear(index),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline_rounded, color: LitColors.coral, size: 20),
+                                        onPressed: () => _removeParticipant(index),
+                                      ),
+                                    ],
+                                  )
+                                : null,
+                            onTap: () {
+                              if (student == null) {
+                                setState(() {
+                                  _activeSlotIndex = index;
+                                  _clearSearchAndForm();
+                                });
+                              } else {
+                                _editStudentBranchAndYear(index);
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_activeSlotIndex < _participants.length && _participants[_activeSlotIndex] == null) ...[
+              ClayCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Add ${_selectedEvent!.isTeamEvent ? (_activeSlotIndex == 0 ? "Captain" : "Member ${_activeSlotIndex + 1}") : "Participant"}',
+                      style: GoogleFonts.fredoka(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: LitColors.ember,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() => _registrationMode = 0);
+                            },
+                            child: ClayCard(
+                              color: _registrationMode == 0 
+                                  ? LitColors.ember.withOpacity(0.2) 
+                                  : LitColors.clay2,
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.qr_code_scanner_rounded,
+                                    color: _registrationMode == 0 ? LitColors.ember : LitColors.ash,
+                                    size: 28,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Barcode Scan',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: _registrationMode == 0 ? LitColors.ember : LitColors.ash,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() => _registrationMode = 1);
+                            },
+                            child: ClayCard(
+                              color: _registrationMode == 1 
+                                  ? LitColors.ember.withOpacity(0.2) 
+                                  : LitColors.clay2,
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.search_rounded,
+                                    color: _registrationMode == 1 ? LitColors.ember : LitColors.ash,
+                                    size: 28,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Manual Entry',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: _registrationMode == 1 ? LitColors.ember : LitColors.ash,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _registrationMode == 0 
+                        ? _buildBarcodeScanSection()
+                        : _buildManualEntrySection(),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            if (allSlotsFilled)
+              ClayButton(
+                width: double.infinity,
+                height: 50,
+                isGhost: false,
+                onPressed: () => setState(() => _currentStep = 2),
+                child: Text(
+                  'Review & Submit',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: LitColors.void_,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 120),
+          ],
+        ),
+      );
   }
 
-  Widget _buildBarcodeScannerSection() {
+  Widget _buildBarcodeScanSection() {
     return Column(
       children: [
-        // Camera Scanner View
-        Expanded(
+        SizedBox(
+          height: 240,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: Container(
@@ -1016,71 +1322,87 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  MobileScanner(
-                    onDetect: (capture) {
-                      if (!_scanEnabled) return;
-                      final barcode = capture.barcodes.first;
-                      if (barcode.rawValue != null) {
-                        _searchStudent(barcode.rawValue!);
-                      }
-                    },
-                    errorBuilder: (context, error, child) {
-                      return Center(
+                  if (_scanEnabled)
+                    MobileScanner(
+                      onDetect: (capture) {
+                        final barcode = capture.barcodes.first;
+                        if (barcode.rawValue != null) {
+                          final extractedUsn = AppUtils.extractUsnFromScan(barcode.rawValue!);
+                          if (extractedUsn.isNotEmpty) {
+                            setState(() {
+                              _scanEnabled = false;
+                              _searchController.text = extractedUsn;
+                            });
+                            _searchStudents(extractedUsn);
+                          }
+                        }
+                      },
+                    ),
+                  if (!_scanEnabled)
+                    Positioned.fill(
+                      child: Container(
+                        color: LitColors.clay2,
+                        padding: const EdgeInsets.all(16),
                         child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.error_outline, color: Colors.white, size: 40),
+                            const Icon(Icons.qr_code_scanner, color: LitColors.ash, size: 48),
                             const SizedBox(height: 12),
                             Text(
-                              'Scanner Error',
-                              style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold),
+                              'Scanner Stopped',
+                              style: GoogleFonts.fredoka(
+                                  color: LitColors.bone, fontSize: 16, fontWeight: FontWeight.bold),
                             ),
-                            const SizedBox(height: 4),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20),
-                              child: Text(
-                                _getErrorMessage(error),
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontSize: 12),
-                              ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Tap the button below to start scanning',
+                              style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12),
+                              textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 16),
                             ClayButton(
-                              width: 120,
+                              width: 160,
                               height: 40,
-                              onPressed: () => setState(() {}),
-                              child: const Text('Retry'),
+                              isGhost: false,
+                              onPressed: () => setState(() => _scanEnabled = true),
+                              child: Text(
+                                'Open Scanner',
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: LitColors.void_,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                      );
-                    },
-                  ),
-                  // Dotted scan frame overlay replicating html design exactly
-                  Container(
-                    width: 220,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: LitColors.ember.withOpacity(0.55),
-                        width: 2,
                       ),
-                      borderRadius: BorderRadius.circular(22),
                     ),
-                    alignment: Alignment.center,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.qr_code_scanner_rounded, color: LitColors.ember, size: 28),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Align barcode in frame',
-                          style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 10),
+                  if (_scanEnabled)
+                    Container(
+                      width: 240,
+                      height: 140,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: LitColors.ember.withOpacity(0.55),
+                          width: 2,
                         ),
-                      ],
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.qr_code_scanner_rounded, color: LitColors.ember, size: 32),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Align barcode in frame',
+                            style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 11),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (_searchingStudent)
+                  if (_searching)
                     Container(
                       color: Colors.black54,
                       child: const Center(
@@ -1089,7 +1411,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                           children: [
                             CircularProgressIndicator(color: LitColors.ember),
                             SizedBox(height: 12),
-                            Text('Auto-filling details...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            Text('Fetching details...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
@@ -1099,284 +1421,541 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        // Scanned Results or Custom Input Search
-        Row(
-          children: [
-            Expanded(
-              child: ClayTextField(
-                controller: _usnController,
-                hintText: 'Enter USN to query manually',
-                prefixIcon: const Icon(Icons.badge_outlined),
-                onChanged: (val) {
-                  if (val.trim().length >= 10) {
-                    _searchStudent(val);
-                  }
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            ClayButton(
-              width: 50,
-              height: 48,
-              isGhost: true,
-              padding: EdgeInsets.zero,
-              onPressed: () => _searchStudent(_usnController.text),
-              child: const Icon(Icons.search_rounded),
-            ),
-          ],
+        const SizedBox(height: 16),
+        ClayTextField(
+          controller: _searchController,
+          hintText: 'Or enter USN manually...',
+          prefixIcon: const Icon(Icons.badge_outlined),
+          onChanged: _onSearchChanged,
         ),
-        const SizedBox(height: 12),
-        if (_usnController.text.isNotEmpty && !_searchingStudent) ...[
-          Expanded(
-            child: SingleChildScrollView(
-              child: _buildPopulatedFormDetails(),
-            ),
-          ),
-        ] else ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'Scan student barcode ID card or enter USN to fetch details.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11.5),
-            ),
-          ),
+        if (_selectedStudentFromSearch != null) ...[
+          const SizedBox(height: 16),
+          _buildStudentDetailsCard(),
+        ] else if (_searchSuggestions.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _buildSuggestionsList(),
         ],
       ],
     );
   }
 
-  String _getErrorMessage(MobileScannerException error) {
-    switch (error.errorCode) {
-      case MobileScannerErrorCode.permissionDenied:
-        return 'Camera permission denied. Please enable it in settings.';
-      case MobileScannerErrorCode.unsupported:
-        return 'Scanning is not supported on this device.';
-      default:
-        return 'An unexpected error occurred: ${error.errorDetails?.message ?? 'Unknown'}';
-    }
-  }
-
-  Widget _buildManualFormSection() {
-    return Form(
-      key: _formKey,
-      child: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  ClayTextField(
-                    controller: _usnController,
-                    hintText: 'USN (Required)',
-                    prefixIcon: const Icon(Icons.badge_outlined),
-                    validator: (val) => val == null || val.trim().isEmpty ? 'USN is required' : null,
-                    onChanged: (val) {
-                      if (val.trim().length >= 10) {
-                        _searchStudent(val);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  ClayTextField(
-                    controller: _nameController,
-                    hintText: 'Full Name (Required)',
-                    prefixIcon: const Icon(Icons.person_outline_rounded),
-                    validator: (val) => val == null || val.trim().isEmpty ? 'Name is required' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClayInsetCard(
-                          borderRadius: 14,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: DropdownButtonFormField<String>(
-                            value: _branch,
-                            dropdownColor: LitColors.clay,
-                            decoration: const InputDecoration(border: InputBorder.none),
-                            items: _branches.map((b) => DropdownMenuItem(value: b, child: Text(b, style: const TextStyle(fontSize: 12)))).toList(),
-                            onChanged: (val) => setState(() => _branch = val ?? 'CS'),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ClayInsetCard(
-                          borderRadius: 14,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: DropdownButtonFormField<int>(
-                            value: _year,
-                            dropdownColor: LitColors.clay,
-                            decoration: const InputDecoration(border: InputBorder.none),
-                            items: [1, 2, 3, 4].map((y) => DropdownMenuItem(value: y, child: Text('$y Year', style: const TextStyle(fontSize: 12)))).toList(),
-                            onChanged: (val) => setState(() => _year = val ?? 1),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ClayTextField(
-                    controller: _phoneController,
-                    hintText: 'Phone Number (Optional)',
-                    keyboardType: TextInputType.phone,
-                    prefixIcon: const Icon(Icons.phone_android_rounded),
-                  ),
-                  const SizedBox(height: 12),
-                  ClayTextField(
-                    controller: _emailController,
-                    hintText: 'Email Address (Optional)',
-                    keyboardType: TextInputType.emailAddress,
-                    prefixIcon: const Icon(Icons.email_outlined),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          ClayButton(
-            onPressed: _saving ? null : _confirmParticipantForSlot,
-            child: _saving 
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Color(0xFF1A0D05), strokeWidth: 2))
-                : Text(_selectedEvent!.isTeamEvent ? 'Confirm & Add Member' : 'Verify & Register Student'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPopulatedFormDetails() {
+  Widget _buildManualEntrySection() {
+    final hasSelectedStudent = _selectedStudentFromSearch != null;
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 8),
-          if (_isNewStudent)
+          ClayTextField(
+            controller: _searchController,
+            hintText: 'Search/Enter USN...',
+            prefixIcon: const Icon(Icons.badge_outlined),
+            onChanged: (val) {
+              if (hasSelectedStudent && val.trim().toUpperCase() != _selectedStudentFromSearch!.usn.toUpperCase()) {
+                setState(() {
+                  _selectedStudentFromSearch = null;
+                  _nameController.clear();
+                  _phoneController.clear();
+                  _emailController.clear();
+                });
+              }
+              _onSearchChanged(val);
+            },
+            suffixIcon: hasSelectedStudent
+                ? IconButton(
+                    icon: const Icon(Icons.clear, color: LitColors.ash),
+                    onPressed: _clearSearchAndForm,
+                  )
+                : null,
+          ),
+          if (_searchSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildSuggestionsList(),
+          ],
+          if (hasSelectedStudent) ...[
+            const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(10),
-              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF2B1C15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: LitColors.amber.withOpacity(0.3)),
+                color: LitColors.moss.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: LitColors.moss.withOpacity(0.3)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: LitColors.amber, size: 16),
+                  const Icon(Icons.info_outline, color: LitColors.moss, size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'New Student! Please fill details to save record.',
-                      style: GoogleFonts.plusJakartaSans(color: LitColors.amber, fontSize: 10.5, fontWeight: FontWeight.bold),
+                      'Existing student loaded. Only Branch and Year can be updated.',
+                      style: GoogleFonts.plusJakartaSans(color: LitColors.moss, fontSize: 11),
                     ),
                   ),
                 ],
               ),
             ),
+          ],
+          const SizedBox(height: 16),
           ClayTextField(
             controller: _nameController,
-            hintText: 'Full Name',
-            prefixIcon: const Icon(Icons.person_outline_rounded),
+            hintText: 'Student Name (Required)',
+            prefixIcon: const Icon(Icons.person_outlined),
+            readOnly: hasSelectedStudent,
             validator: (val) => val == null || val.trim().isEmpty ? 'Name is required' : null,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: ClayInsetCard(
-                  borderRadius: 14,
+                  borderRadius: 12,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: _branch,
                     dropdownColor: LitColors.clay,
-                    decoration: const InputDecoration(border: InputBorder.none),
-                    items: _branches.map((b) => DropdownMenuItem(value: b, child: Text(b, style: const TextStyle(fontSize: 12)))).toList(),
-                    onChanged: (val) => setState(() => _branch = val ?? 'CS'),
+                    hint: Text('Branch', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    items: _branches.map((b) => DropdownMenuItem<String>(
+                      value: b,
+                      child: Text(
+                        _branchDisplayNames[b] ?? b,
+                        style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    )).toList(),
+                    onChanged: (value) {
+                      if (value != null) setState(() => _branch = value);
+                    },
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: ClayInsetCard(
-                  borderRadius: 14,
+                  borderRadius: 12,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonFormField<int>(
+                    isExpanded: true,
                     value: _year,
                     dropdownColor: LitColors.clay,
-                    decoration: const InputDecoration(border: InputBorder.none),
-                    items: [1, 2, 3, 4].map((y) => DropdownMenuItem(value: y, child: Text('$y Yr', style: const TextStyle(fontSize: 12)))).toList(),
-                    onChanged: (val) => setState(() => _year = val ?? 1),
+                    hint: Text('Year', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    items: [1, 2, 3, 4].map((y) => DropdownMenuItem<int>(
+                      value: y,
+                      child: Text(
+                        '$y Year',
+                        style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    )).toList(),
+                    onChanged: (value) {
+                      if (value != null) setState(() => _year = value);
+                    },
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           ClayTextField(
             controller: _phoneController,
             hintText: 'Phone (Optional)',
-            keyboardType: TextInputType.phone,
-            prefixIcon: const Icon(Icons.phone_android_rounded),
+            prefixIcon: const Icon(Icons.phone_outlined),
+            readOnly: hasSelectedStudent,
           ),
           const SizedBox(height: 12),
+          ClayTextField(
+            controller: _emailController,
+            hintText: 'Email (Optional)',
+            prefixIcon: const Icon(Icons.email_outlined),
+            readOnly: hasSelectedStudent,
+          ),
+          const SizedBox(height: 16),
           ClayButton(
-            onPressed: _saving ? null : _confirmParticipantForSlot,
-            child: _saving 
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Color(0xFF1A0D05), strokeWidth: 2))
-                : Text(_selectedEvent!.isTeamEvent ? 'Confirm Member' : 'Confirm & Register Student'),
+            width: double.infinity,
+            height: 48,
+            isGhost: false,
+            onPressed: _confirmParticipant,
+            child: Text(
+              hasSelectedStudent ? 'Update & Add Participant' : 'Add Participant',
+              style: GoogleFonts.plusJakartaSans(
+                color: LitColors.void_,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAllSlotsFilledCard() {
-    return ClayCard(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const Icon(Icons.check_circle_rounded, size: 56, color: LitColors.moss),
-          const SizedBox(height: 12),
-          Text(
-            'All Details Verified!',
-            style: GoogleFonts.fredoka(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              color: LitColors.moss,
+  Widget _buildSuggestionsList() {
+    return Container(
+      decoration: BoxDecoration(
+        color: LitColors.clay2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: LitColors.clay3),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(8),
+        itemCount: _searchSuggestions.length,
+        separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFF262220)),
+        itemBuilder: (context, index) {
+          final student = _searchSuggestions[index];
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            leading: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: LitColors.clay3,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                student.usn.length >= 3 ? student.usn.substring(student.usn.length - 3) : student.usn,
+                style: GoogleFonts.plusJakartaSans(
+                  color: LitColors.bone,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _selectedEvent!.isTeamEvent
-                ? 'Ready to register team "${_teamNameController.text}"'
-                : 'Ready to register participant for this event.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12),
-          ),
-          const SizedBox(height: 20),
-          ClayButton(
-            onPressed: _saving ? null : _submitRegistration,
-            child: _saving 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFF1A0D05), strokeWidth: 2))
-                : Text(_selectedEvent!.isTeamEvent ? 'Register Team Now' : 'Complete Registration'),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _activeSlotIndex = 0;
-              });
-            },
-            child: Text(
-              'Back to Edit Members',
-              style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12, fontWeight: FontWeight.bold),
+            title: Text(
+              student.name,
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                color: LitColors.bone,
+              ),
             ),
-          ),
-        ],
+            subtitle: Text(
+              '${student.usn} • ${_branchDisplayNames[student.branch] ?? student.branch} • ${student.year} Yr',
+              style: GoogleFonts.plusJakartaSans(
+                color: LitColors.ash,
+                fontSize: 10,
+              ),
+            ),
+            onTap: () => _selectStudentFromSearch(student),
+          );
+        },
       ),
     );
+  }
+
+  Widget _buildStudentDetailsCard() {
+    final student = _selectedStudentFromSearch!;
+    return Column(
+      children: [
+        ClayCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: LitColors.moss,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      student.usn.length >= 3 ? student.usn.substring(student.usn.length - 3) : student.usn,
+                      style: GoogleFonts.plusJakartaSans(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          student.name,
+                          style: GoogleFonts.fredoka(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: LitColors.bone,
+                          ),
+                        ),
+                        Text(
+                          student.usn,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: LitColors.ash,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 24, color: Color(0xFF262220)),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClayInsetCard(
+                      borderRadius: 12,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _branch,
+                        dropdownColor: LitColors.clay,
+                        hint: Text('Branch', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        items: _branches.map((b) => DropdownMenuItem<String>(
+                          value: b,
+                          child: Text(
+                            _branchDisplayNames[b] ?? b,
+                            style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        )).toList(),
+                        onChanged: (value) {
+                          if (value != null) setState(() => _branch = value);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ClayInsetCard(
+                      borderRadius: 12,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: DropdownButtonFormField<int>(
+                        isExpanded: true,
+                        value: _year,
+                        dropdownColor: LitColors.clay,
+                        hint: Text('Year', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        items: [1, 2, 3, 4].map((y) => DropdownMenuItem<int>(
+                          value: y,
+                          child: Text(
+                            '$y Year',
+                            style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        )).toList(),
+                        onChanged: (value) {
+                          if (value != null) setState(() => _year = value);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (student.phone != null && student.phone!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(Icons.phone_outlined, color: LitColors.ash, size: 14),
+                    const SizedBox(width: 6),
+                    Text(
+                      student.phone!,
+                      style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        ClayButton(
+          width: double.infinity,
+          height: 48,
+          isGhost: false,
+          onPressed: _confirmParticipant,
+          child: Text(
+            'Add Participant',
+            style: GoogleFonts.plusJakartaSans(
+              color: LitColors.void_,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepReview() {
+    final isTeam = _selectedEvent!.isTeamEvent;
+    
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, color: LitColors.bone),
+                  onPressed: () => setState(() => _currentStep = 1),
+                ),
+                Expanded(
+                  child: Text(
+                    'Step 3: Review & Submit',
+                    style: GoogleFonts.fredoka(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: LitColors.bone,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ClayCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Event',
+                    style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 10),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _selectedEvent!.name,
+                    style: GoogleFonts.fredoka(color: LitColors.bone, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const Divider(height: 24, color: Color(0xFF262220)),
+                  if (isTeam) ...[
+                    Text(
+                      'Team Name',
+                      style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 10),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _branchDisplayNames[_teamDepartment] ?? _teamDepartment!,
+                      style: GoogleFonts.fredoka(color: LitColors.moss, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const Divider(height: 24, color: Color(0xFF262220)),
+                  ],
+                  Text(
+                    isTeam ? 'Team Members' : 'Participant',
+                    style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 10),
+                  ),
+                  const SizedBox(height: 12),
+                  ..._participants.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final student = entry.value!;
+                    final role = index == 0 ? '(Captain)' : '';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: ClayCard(
+                        color: const Color(0xFF11261B),
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: LitColors.moss,
+                                shape: BoxShape.circle,
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                '${index + 1}',
+                                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${student.name} $role',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: LitColors.moss,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${student.usn} • ${student.branch} • ${student.year} Yr',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: LitColors.ash,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            ClayButton(
+              width: double.infinity,
+              height: 52,
+              isGhost: false,
+              onPressed: _submitting ? null : _submitRegistration,
+              child: _submitting
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF1A0D05),
+                        ),
+                      ),
+                    )
+                  : Text(
+                      'Complete Registration',
+                      style: GoogleFonts.plusJakartaSans(
+                        color: LitColors.void_,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 120),
+          ],
+        ),
+      );
   }
 }

@@ -126,6 +126,16 @@ void main() {
       final date = DateTime(2026, 7, 15);
       expect(AppUtils.formatDate(date), '15 Jul 2026');
     });
+
+    test('extractUsnFromScan parses various inputs correctly', () {
+      expect(AppUtils.extractUsnFromScan('4MC22CS001'), '4MC22CS001');
+      expect(AppUtils.extractUsnFromScan('4MC22CS001\x00'), '4MC22CS001');
+      expect(AppUtils.extractUsnFromScan('*4MC22CS001*'), '4MC22CS001');
+      expect(AppUtils.extractUsnFromScan('https://mce.edu/student/4MC22CS001'), '4MC22CS001');
+      expect(AppUtils.extractUsnFromScan('https://example.com/verify?usn=4mc22cs001'), '4MC22CS001');
+      expect(AppUtils.extractUsnFromScan('4MC22MCA01'), '4MC22MCA01');
+      expect(AppUtils.extractUsnFromScan('Name: Vijay, USN: 4MC22CS001, Year: 4'), '4MC22CS001');
+    });
   });
 
   group('Models', () {

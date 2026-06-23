@@ -11,6 +11,7 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/utils/app_utils.dart';
 
 class AttendanceScanScreen extends ConsumerStatefulWidget {
   const AttendanceScanScreen({super.key});
@@ -251,8 +252,11 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
                           if (!_scanEnabled) return;
                           final barcode = capture.barcodes.first;
                           if (barcode.rawValue != null) {
-                            setState(() => _scanEnabled = false);
-                            _markAttendance(barcode.rawValue!);
+                            final extractedUsn = AppUtils.extractUsnFromScan(barcode.rawValue!);
+                            if (extractedUsn.isNotEmpty) {
+                              setState(() => _scanEnabled = false);
+                              _markAttendance(extractedUsn);
+                            }
                           }
                         },
                         errorBuilder: (context, error, child) {
