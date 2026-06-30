@@ -31,16 +31,16 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   final _manualPhoneController = TextEditingController();
   final _manualEmailController = TextEditingController();
 
-  String _manualBranch = 'CS';
+  String _manualBranch = 'CSE';
   int _manualYear = 1;
   String _manualSection = 'A';
   final List<String> _branches = [
-    'CS',
-    'IS',
+    'CSE',
+    'ISE',
     'CI',
     'CB',
     'RI',
-    'EC',
+    'ECE',
     'VL',
     'EI',
     'EE',
@@ -49,12 +49,12 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   ];
 
   static const _branchDisplayNames = {
-    'CS': 'Computer Science',
-    'IS': 'Information Science',
+    'CSE': 'Computer Science',
+    'ISE': 'Information Science',
     'CI': 'Artificial Intelligence and Machine Learning',
     'CB': 'Computer Science and Business Studies',
     'RI': 'Robotics & Intelligence',
-    'EC': 'Electronics & Communication',
+    'ECE': 'Electronics & Communication',
     'VL': 'VLSI',
     'EI': 'Electronics & Instrumentation',
     'EE': 'Electrical & Electronics',
@@ -83,37 +83,22 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     _manualUsnController.addListener(_onManualUsnChanged);
   }
 
+  /// Pre-fills branch and year dropdowns in the manual entry form based on the typed USN.
+  /// This is a UI CONVENIENCE ONLY — it never overwrites the stored USN.
+  /// The admission year embedded in the USN (e.g., '22' in 4MC22CS001) is NEVER modified.
   void _onManualUsnChanged() {
     final usn = _manualUsnController.text.trim().toUpperCase();
-    final usnRegExp = RegExp(r'^\d[A-Z]{2}\d{2}[A-Z]{2}\d{3}$');
-    if (usnRegExp.hasMatch(usn)) {
-      final yearPart = usn.substring(3, 5);
-      final branchPart = usn.substring(5, 7);
-      
-      final admissionYear = int.tryParse("20$yearPart");
-      int? inferredYear;
-      if (admissionYear != null) {
-        final now = DateTime.now();
-        final currentYear = now.year;
-        final currentMonth = now.month;
-        int studyYear = currentYear - admissionYear;
-        if (currentMonth >= 8) {
-          studyYear += 1;
-        }
-        if (studyYear >= 1 && studyYear <= 4) {
-          inferredYear = studyYear;
-        }
+    final inferredBranch = AppUtils.extractBranchFromUsn(usn);
+    final inferredYear = AppUtils.inferCurrentStudyYearFromUsn(usn);
+    
+    setState(() {
+      if (_branches.contains(inferredBranch)) {
+        _manualBranch = inferredBranch;
       }
-      
-      setState(() {
-        if (_branches.contains(branchPart)) {
-          _manualBranch = branchPart;
-        }
-        if (inferredYear != null) {
-          _manualYear = inferredYear;
-        }
-      });
-    }
+      if (inferredYear != null) {
+        _manualYear = inferredYear;
+      }
+    });
   }
 
   void _initializeSlots() {
@@ -222,6 +207,34 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 backgroundColor: Colors.orange));
           }
         } else {
+          // Check branch participation constraint
+          final constraintsSummary = ref.read(eventConstraintsSummaryProvider(_selectedEvent!.id)).value ?? [];
+          final constraint = constraintsSummary.firstWhere(
+            (c) => c['branch'] == student.branch,
+            orElse: () => {},
+          );
+          if (constraint.isNotEmpty) {
+            final int maxParticipants = constraint['max'] as int;
+            final int currentParticipants = constraint['current'] as int;
+            final int pendingCount = _participants.where((p) => p != null && p.branch == student.branch && p.id != student.id).length;
+            
+            if (currentParticipants + pendingCount + 1 > maxParticipants) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Limit exceeded! Only $maxParticipants participants from ${student.branch} are allowed for this event.'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+              setState(() {
+                _isLoading = false;
+                _scanEnabled = true;
+              });
+              return;
+            }
+          }
+
           if (_selectedEvent!.isTeamEvent && _teamDepartment != null) {
             if (student.branch != _teamDepartment) {
               if (mounted) {
@@ -297,7 +310,15 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     final student = _participants[index];
     if (student == null) return;
 
-    String selectedBranch = student.branch;
+    final inferredBranch = AppUtils.extractBranchFromUsn(student.usn);
+    String selectedBranch;
+    if (_branches.contains(inferredBranch)) {
+      selectedBranch = inferredBranch;
+    } else {
+      final stdBranch = AppUtils.mapUsnBranchToOfficial(student.branch);
+      selectedBranch = _branches.contains(stdBranch) ? stdBranch : _branches.first;
+    }
+    // Use the DB-stored year, not the dynamically inferred one.
     int selectedYear = student.year;
 
     showDialog(
@@ -316,7 +337,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 children: [
                   DropdownButtonFormField<String>(
                     isExpanded: true,
-                    value: selectedBranch,
+                    initialValue: selectedBranch,
                     dropdownColor: const Color(0xFF1D1A18),
                     decoration: const InputDecoration(
                       labelText: 'Branch',
@@ -343,7 +364,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                   const SizedBox(height: 16),
                   DropdownButtonFormField<int>(
                     isExpanded: true,
-                    value: selectedYear,
+                    initialValue: selectedYear,
                     dropdownColor: const Color(0xFF1D1A18),
                     decoration: const InputDecoration(
                       labelText: 'Year',
@@ -464,6 +485,33 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
               backgroundColor: Colors.orange));
         }
       } else {
+        // Check branch participation constraint
+        final constraintsSummary = ref.read(eventConstraintsSummaryProvider(_selectedEvent!.id)).value ?? [];
+        final constraint = constraintsSummary.firstWhere(
+          (c) => c['branch'] == student.branch,
+          orElse: () => {},
+        );
+        if (constraint.isNotEmpty) {
+          final int maxParticipants = constraint['max'] as int;
+          final int currentParticipants = constraint['current'] as int;
+          final int pendingCount = _participants.where((p) => p != null && p.branch == student.branch && p.id != student.id).length;
+          
+          if (currentParticipants + pendingCount + 1 > maxParticipants) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Limit exceeded! Only $maxParticipants participants from ${student.branch} are allowed for this event.'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+            setState(() {
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+
         if (_selectedEvent!.isTeamEvent && _teamDepartment != null) {
           if (student.branch != _teamDepartment) {
             if (mounted) {
@@ -501,6 +549,27 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
 
   Future<void> _submitRegistration() async {
     if (_selectedEvent == null) return;
+
+    // Check branch participation constraint
+    final constraintsSummary = ref.read(eventConstraintsSummaryProvider(_selectedEvent!.id)).value ?? [];
+    for (final c in constraintsSummary) {
+      final branch = c['branch'] as String;
+      final maxVal = c['max'] as int;
+      final current = c['current'] as int;
+      
+      final toRegisterCount = _participants.where((p) => p != null && p.branch == branch).length;
+      if (current + toRegisterCount > maxVal) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Branch limit reached: $branch has reached the maximum of $maxVal participants for this event.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+    }
 
     // Validate
     if (_selectedEvent!.isTeamEvent) {
@@ -662,6 +731,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
       ref.invalidate(eventRegistrationsCountProvider(_selectedEvent!.id));
       ref.invalidate(dashboardStatsProvider);
       ref.invalidate(activeEventsProvider);
+      ref.invalidate(eventConstraintsSummaryProvider(_selectedEvent!.id));
 
       // Success, reset the form
       setState(() {
@@ -801,7 +871,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           isExpanded: true,
-                          value: _teamDepartment,
+                          initialValue: _teamDepartment,
                           dropdownColor: const Color(0xFF1D1A18),
                           hint: const Text('Select Team Department', style: TextStyle(color: Color(0xFF8C857C), fontSize: 13)),
                           items: _branches.map((b) => DropdownMenuItem<String>(
@@ -959,7 +1029,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                             const SizedBox(height: 8),
                             DropdownButtonFormField<String>(
                               isExpanded: true,
-                              value: _teamDepartment,
+                              initialValue: _teamDepartment,
                               dropdownColor: const Color(0xFF1D1A18),
                               hint: const Text('Select Team Department', style: TextStyle(color: Color(0xFF8C857C), fontSize: 13)),
                               items: _branches.map((b) => DropdownMenuItem<String>(
@@ -1066,7 +1136,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   }
 
   Widget _buildScannerAndSearch({required bool isTablet}) {
-    final scannerWidget = Container(
+    final scannerWidget = SizedBox(
       height: isTablet ? null : 240,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -1132,7 +1202,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                   height: 140,
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.55),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.55),
                       width: 2,
                     ),
                     borderRadius: BorderRadius.circular(24),

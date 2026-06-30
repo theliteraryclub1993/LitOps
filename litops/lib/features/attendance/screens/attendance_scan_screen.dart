@@ -159,7 +159,7 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
                   borderRadius: 14,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonFormField<Event>(
-                    value: _selectedEvent,
+                    initialValue: _selectedEvent,
                     dropdownColor: LitColors.clay,
                     decoration: const InputDecoration(border: InputBorder.none),
                     items: _events.map((e) => DropdownMenuItem(value: e, child: Text(e.name, style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 13)))).toList(),
@@ -297,7 +297,7 @@ class _AttendanceScanScreenState extends ConsumerState<AttendanceScanScreen> {
                         height: 120,
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: LitColors.ember.withOpacity(0.55),
+                            color: LitColors.ember.withValues(alpha: 0.55),
                             width: 2,
                           ),
                           borderRadius: BorderRadius.circular(22),

@@ -9,6 +9,7 @@ import '../../../core/models/models.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/services/notification_service.dart';
 import '../repositories/auth_repository.dart';
+import 'auth_settings_provider.dart';
 
 class AuthState {
   final bool isAuthenticated;
@@ -57,7 +58,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
   static const _secureStorage = FlutterSecureStorage();
 
   // Super Admin credentials (real Supabase account - change these later)
-  static const _superAdminEmail = 'theliteraryclubmce@gmail.com';
+  static const superAdminEmail = 'theliteraryclubmce@gmail.com';
+  static const _superAdminEmail = superAdminEmail;
   static const _superAdminPassword = 'Malnad2K27';
 
   // Demo Admin credentials (offline bypass - no Supabase needed)
@@ -277,11 +279,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signIn(String email, String password, {bool rememberMe = false}) async {
     state = state.copyWith(isLoading: true, error: null, rememberMe: rememberMe);
 
+    final emailLower = email.trim().toLowerCase();
+    final isSuperAdminLogin = emailLower == _superAdminEmail.toLowerCase();
+    if (!isSuperAdminLogin) {
+      try {
+        final settings = await fetchAuthSettings();
+        if (!settings.signInEnabled) {
+          state = state.copyWith(
+            isLoading: false,
+            error: settings.signInDisabledMessage,
+          );
+          return;
+        }
+      } catch (_) {
+        // Fail-open if settings table is unavailable
+      }
+    }
+
     // ── DEMO ADMIN BYPASS ──────────────────────────────────────────────
     // Works without Supabase. Full Student President access.
     // Login: admin@litops.com / litops123
     // TODO: Remove this block after configuring real admin in Supabase
-    if (email == _demoAdminEmail && password == _demoAdminPassword) {
+    if (emailLower == _demoAdminEmail.toLowerCase() && password == _demoAdminPassword) {
       await Future.delayed(const Duration(milliseconds: 500));
       state = AuthState(
         isAuthenticated: true,
@@ -405,6 +424,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signUp(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
+      final settings = await fetchAuthSettings();
+      if (!settings.registrationEnabled) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'New account registration is currently closed. Please contact the club admin.',
+        );
+        return;
+      }
+
       await _authRepository.signUp(email, password);
 
       // Registration successful — signal the UI

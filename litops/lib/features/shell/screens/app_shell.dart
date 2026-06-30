@@ -105,52 +105,7 @@ class AppShell extends ConsumerWidget {
     
     return Scaffold(
       backgroundColor: LitColors.void_,
-      body: Stack(
-        children: [
-          child,
-          if (isDashboard && shouldShowNavbar)
-            Positioned(
-              right: context.r.w(24),
-              bottom: context.r.h(120),
-              child: GestureDetector(
-                onTap: () => context.push('/registration'),
-                child: Container(
-                  height: context.r.w(56),
-                  width: context.r.w(56),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [LitColors.ember, LitColors.emberDark],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 12,
-                        offset: const Offset(0, 6),
-                      ),
-                      BoxShadow(
-                        color: LitColors.ember.withValues(alpha: 0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      width: 1,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.qr_code_scanner_rounded,
-                    color: const Color(0xFF1A0D05),
-                    size: context.r.icon(26),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      body: child,
       extendBody: shouldShowNavbar,
       bottomNavigationBar: shouldShowNavbar
           ? ClayBottomNavBar(

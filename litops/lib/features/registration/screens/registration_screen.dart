@@ -29,12 +29,12 @@ final activeEventsProvider = FutureProvider<List<Event>>((ref) async {
 });
 
 const _branchDisplayNames = {
-  'CS': 'Computer Science',
-  'IS': 'Information Science',
+  'CSE': 'Computer Science',
+  'ISE': 'Information Science',
   'CI': 'Artificial Intelligence and Machine Learning',
   'CB': 'Computer Science and Business Studies',
   'RI': 'Robotics & Intelligence',
-  'EC': 'Electronics & Communication',
+  'ECE': 'Electronics & Communication',
   'VL': 'VLSI',
   'EI': 'Electronics & Instrumentation',
   'EE': 'Electrical & Electronics',
@@ -69,7 +69,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
   final _searchController = TextEditingController();
   List<Student> _searchSuggestions = [];
   Timer? _debounceTimer;
-  bool _searching = false;
+  final bool _searching = false;
   bool _loadingSuggestions = false;
   
   // UI state
@@ -81,7 +81,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  String _branch = 'CS';
+  String _branch = 'CSE';
   int _year = 1;
   Student? _selectedStudentFromSearch;
   bool _isNewStudent = false;
@@ -91,7 +91,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
   bool _scanEnabled = true;
   
   final List<String> _branches = [
-    'CS', 'IS', 'CI', 'CB', 'RI', 'EC', 'VL', 'EI', 'EE', 'CV', 'ME'
+    'CSE', 'ISE', 'CI', 'CB', 'RI', 'ECE', 'VL', 'EI', 'EE', 'CV', 'ME'
   ];
 
   @override
@@ -101,37 +101,22 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
     _searchController.addListener(_onSearchUsnChanged);
   }
 
+  /// Pre-fills branch and year dropdowns based on the USN typed in the search field.\r
+  /// This is a UI CONVENIENCE ONLY — it never overwrites the stored USN.\r
+  /// The admission year embedded in the USN (e.g., '22' in 4MC22CS001) is NEVER modified.\r
   void _onSearchUsnChanged() {
     final usn = _searchController.text.trim().toUpperCase();
-    final usnRegExp = RegExp(r'^\d[A-Z]{2}\d{2}[A-Z]{2}\d{3}$');
-    if (usnRegExp.hasMatch(usn)) {
-      final yearPart = usn.substring(3, 5);
-      final branchPart = usn.substring(5, 7);
-      
-      final admissionYear = int.tryParse("20$yearPart");
-      int? inferredYear;
-      if (admissionYear != null) {
-        final now = DateTime.now();
-        final currentYear = now.year;
-        final currentMonth = now.month;
-        int studyYear = currentYear - admissionYear;
-        if (currentMonth >= 8) {
-          studyYear += 1;
-        }
-        if (studyYear >= 1 && studyYear <= 4) {
-          inferredYear = studyYear;
-        }
+    final inferredBranch = AppUtils.extractBranchFromUsn(usn);
+    final inferredYear = AppUtils.inferCurrentStudyYearFromUsn(usn);
+    
+    setState(() {
+      if (_branches.contains(inferredBranch)) {
+        _branch = inferredBranch;
       }
-      
-      setState(() {
-        if (_branches.contains(branchPart)) {
-          _branch = branchPart;
-        }
-        if (inferredYear != null) {
-          _year = inferredYear;
-        }
-      });
-    }
+      if (inferredYear != null) {
+        _year = inferredYear;
+      }
+    });
   }
 
   @override
@@ -186,7 +171,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
     setState(() {
       _searchSuggestions = [];
       _selectedStudentFromSearch = null;
-      _branch = 'CS';
+      _branch = 'CSE';
       _year = 1;
       _isNewStudent = false;
       _scanEnabled = true;
@@ -266,6 +251,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
   }
 
   Future<void> _selectStudentFromSearch(Student student) async {
+    final inferredBranch = AppUtils.extractBranchFromUsn(student.usn);
+
     setState(() {
       _selectedStudentFromSearch = student;
       _searchController.text = student.usn;
@@ -273,9 +260,14 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
       _nameController.text = student.name;
       _phoneController.text = student.phone ?? '';
       _emailController.text = student.email ?? '';
-      _branch = _branches.contains(student.branch.toUpperCase()) 
-          ? student.branch.toUpperCase() 
-          : _branches.first;
+      if (_branches.contains(inferredBranch)) {
+        _branch = inferredBranch;
+      } else {
+        final stdBranch = AppUtils.mapUsnBranchToOfficial(student.branch);
+        _branch = _branches.contains(stdBranch) ? stdBranch : _branches.first;
+      }
+      // Use the DB-stored year for existing students, not the dynamically inferred one.
+      // The inferred year is only an estimate and must not overwrite CSV-imported values.
       _year = student.year;
       _isNewStudent = false;
     });
@@ -283,6 +275,32 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
 
   Future<void> _confirmParticipant() async {
     if (_selectedEvent == null) return;
+
+    // Check branch participation constraint
+    final constraintsSummary = ref.read(eventConstraintsSummaryProvider(_selectedEvent!.id)).value ?? [];
+    final constraint = constraintsSummary.firstWhere(
+      (c) => c['branch'] == _branch,
+      orElse: () => {},
+    );
+    if (constraint.isNotEmpty) {
+      final int maxParticipants = constraint['max'] as int;
+      final int currentParticipants = constraint['current'] as int;
+      
+      // Count how many of this branch are already in the _participants list
+      final int pendingCount = _participants.where((p) => p != null && p.branch == _branch && (_selectedStudentFromSearch == null || p.id != _selectedStudentFromSearch!.id)).length;
+      
+      if (currentParticipants + pendingCount + 1 > maxParticipants) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Limit exceeded! Only $maxParticipants participants from $_branch are allowed for this event.'),
+              backgroundColor: LitColors.coral,
+            ),
+          );
+        }
+        return;
+      }
+    }
 
     // For team events, check department matching
     if (_selectedEvent!.isTeamEvent && _teamDepartment != null) {
@@ -465,7 +483,15 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
     final student = _participants[index];
     if (student == null) return;
 
-    String selectedBranch = student.branch;
+    final inferredBranch = AppUtils.extractBranchFromUsn(student.usn);
+    String selectedBranch;
+    if (_branches.contains(inferredBranch)) {
+      selectedBranch = inferredBranch;
+    } else {
+      final stdBranch = AppUtils.mapUsnBranchToOfficial(student.branch);
+      selectedBranch = _branches.contains(stdBranch) ? stdBranch : _branches.first;
+    }
+    // Use the DB-stored year, not the dynamically inferred one.
     int selectedYear = student.year;
 
     showDialog(
@@ -484,7 +510,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                 children: [
                   DropdownButtonFormField<String>(
                     isExpanded: true,
-                    value: selectedBranch,
+                    initialValue: selectedBranch,
                     dropdownColor: LitColors.clay,
                     decoration: const InputDecoration(
                       labelText: 'Branch',
@@ -511,7 +537,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                   const SizedBox(height: 16),
                   DropdownButtonFormField<int>(
                     isExpanded: true,
-                    value: selectedYear,
+                    initialValue: selectedYear,
                     dropdownColor: LitColors.clay,
                     decoration: const InputDecoration(
                       labelText: 'Year',
@@ -584,6 +610,27 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
   Future<void> _submitRegistration() async {
     if (_selectedEvent == null) return;
     
+    // Final safety check for branch participation constraints
+    final constraintsSummary = ref.read(eventConstraintsSummaryProvider(_selectedEvent!.id)).value ?? [];
+    for (final c in constraintsSummary) {
+      final branch = c['branch'] as String;
+      final maxVal = c['max'] as int;
+      final current = c['current'] as int;
+      
+      final toRegisterCount = _participants.where((p) => p != null && p.branch == branch).length;
+      if (current + toRegisterCount > maxVal) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Branch limit reached: $branch has reached the maximum of $maxVal participants for this event.'),
+              backgroundColor: LitColors.coral,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     setState(() => _submitting = true);
 
     try {
@@ -855,7 +902,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: categoryColor.withOpacity(0.15),
+                                color: categoryColor.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -887,8 +934,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
                                 color: event.isTeamEvent 
-                                    ? LitColors.ember.withOpacity(0.15)
-                                    : LitColors.moss.withOpacity(0.15),
+                                    ? LitColors.ember.withValues(alpha: 0.15)
+                                    : LitColors.moss.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
@@ -1053,7 +1100,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: DropdownButtonFormField<String>(
                         isExpanded: true,
-                        value: _teamDepartment,
+                        initialValue: _teamDepartment,
                         dropdownColor: LitColors.clay,
                         hint: Text('Select Team Department', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
                         decoration: const InputDecoration(
@@ -1222,7 +1269,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                             },
                             child: ClayCard(
                               color: _registrationMode == 0 
-                                  ? LitColors.ember.withOpacity(0.2) 
+                                  ? LitColors.ember.withValues(alpha: 0.2) 
                                   : LitColors.clay2,
                               padding: const EdgeInsets.all(12),
                               child: Column(
@@ -1254,7 +1301,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                             },
                             child: ClayCard(
                               color: _registrationMode == 1 
-                                  ? LitColors.ember.withOpacity(0.2) 
+                                  ? LitColors.ember.withValues(alpha: 0.2) 
                                   : LitColors.clay2,
                               padding: const EdgeInsets.all(12),
                               child: Column(
@@ -1384,7 +1431,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                       height: 140,
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: LitColors.ember.withOpacity(0.55),
+                          color: LitColors.ember.withValues(alpha: 0.55),
                           width: 2,
                         ),
                         borderRadius: BorderRadius.circular(24),
@@ -1477,9 +1524,9 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: LitColors.moss.withOpacity(0.1),
+                color: LitColors.moss.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: LitColors.moss.withOpacity(0.3)),
+                border: Border.all(color: LitColors.moss.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -1512,7 +1559,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
-                    value: _branch,
+                    initialValue: _branch,
                     dropdownColor: LitColors.clay,
                     hint: Text('Branch', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
                     decoration: const InputDecoration(
@@ -1543,7 +1590,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonFormField<int>(
                     isExpanded: true,
-                    value: _year,
+                    initialValue: _year,
                     dropdownColor: LitColors.clay,
                     hint: Text('Year', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
                     decoration: const InputDecoration(
@@ -1721,7 +1768,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: DropdownButtonFormField<String>(
                         isExpanded: true,
-                        value: _branch,
+                        initialValue: _branch,
                         dropdownColor: LitColors.clay,
                         hint: Text('Branch', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
                         decoration: const InputDecoration(
@@ -1752,7 +1799,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> with Si
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: DropdownButtonFormField<int>(
                         isExpanded: true,
-                        value: _year,
+                        initialValue: _year,
                         dropdownColor: LitColors.clay,
                         hint: Text('Year', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 12)),
                         decoration: const InputDecoration(

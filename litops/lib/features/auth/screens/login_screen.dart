@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
+import '../providers/auth_settings_provider.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/utils/responsive.dart';
 
@@ -50,6 +51,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       ),
     );
     _animationController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(authSettingsProvider);
+    });
   }
 
   @override
@@ -72,7 +76,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
+    final authSettingsAsync = ref.watch(authSettingsProvider);
     final r = context.r;
+    final emailLower = _emailController.text.trim().toLowerCase();
+    final isSuperAdminLogin =
+        emailLower == AuthNotifier.superAdminEmail.toLowerCase();
+    final signInClosed = authSettingsAsync.maybeWhen(
+      data: (settings) => !settings.signInEnabled && !isSuperAdminLogin,
+      orElse: () => false,
+    );
+    final closedMessage = authSettingsAsync.maybeWhen(
+      data: (settings) => settings.signInDisabledMessage,
+      orElse: () => AuthSettings.defaultSignInDisabledMessage,
+    );
 
     ref.listen<AuthState>(authStateProvider, (prev, next) {
       if (next.error != null && next.error != prev?.error) {
@@ -99,8 +115,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       body: Stack(
         children: [
           // Background Glows
-          RepaintBoundary(
-            child: Positioned.fill(
+          Positioned.fill(
+            child: RepaintBoundary(
               child: AnimatedBuilder(
                 animation: _glowAnimation,
                 builder: (context, child) {
@@ -170,12 +186,49 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             ),
                             SizedBox(height: r.h(32)),
 
+                            if (signInClosed) ...[
+                              Container(
+                                width: double.infinity,
+                                padding: EdgeInsets.all(r.w(14)),
+                                decoration: BoxDecoration(
+                                  color: LitColors.coral.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(r.radius(14)),
+                                  border: Border.all(
+                                    color: LitColors.coral.withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      Icons.lock_clock_rounded,
+                                      color: LitColors.coral,
+                                      size: r.icon(20),
+                                    ),
+                                    SizedBox(width: r.w(10)),
+                                    Expanded(
+                                      child: Text(
+                                        closedMessage,
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: LitColors.bone,
+                                          fontSize: r.sp(12),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(height: r.h(20)),
+                            ],
+
                             // Email
                             ClayTextField(
                               controller: _emailController,
                               hintText: 'USN or college email',
                               prefixIcon: const Icon(Icons.person_outline),
                               keyboardType: TextInputType.emailAddress,
+                              onChanged: (_) => setState(() {}),
                               validator: (v) =>
                                   v == null || v.isEmpty ? 'Please enter your email/USN' : null,
                             ),
@@ -251,7 +304,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                             // Sign In Button
                             ClayButton(
-                              onPressed: authState.isLoading ? null : _handleLogin,
+                              onPressed: authState.isLoading || signInClosed
+                                  ? null
+                                  : _handleLogin,
                               child: authState.isLoading
                                   ? SizedBox(
                                       height: r.w(18),
@@ -323,28 +378,58 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                             SizedBox(height: r.h(32)),
                             // Create account link
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'New here? ',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    color: LitColors.ash,
-                                    fontSize: r.sp(13),
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => context.go('/register'),
-                                  child: Text(
-                                    'Create an account',
+                            authSettingsAsync.maybeWhen(
+                              data: (settings) {
+                                if (!settings.registrationEnabled) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'New here? ',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        color: LitColors.ash,
+                                        fontSize: r.sp(13),
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () => context.go('/register'),
+                                      child: Text(
+                                        'Create an account',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: LitColors.ember,
+                                          fontSize: r.sp(13),
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                              orElse: () => Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'New here? ',
                                     style: GoogleFonts.plusJakartaSans(
-                                      color: LitColors.ember,
+                                      color: LitColors.ash,
                                       fontSize: r.sp(13),
-                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  GestureDetector(
+                                    onTap: () => context.go('/register'),
+                                    child: Text(
+                                      'Create an account',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        color: LitColors.ember,
+                                        fontSize: r.sp(13),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
 
                             SizedBox(height: r.h(24)),

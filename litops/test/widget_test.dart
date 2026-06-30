@@ -40,6 +40,12 @@ void main() {
       final date = DateTime(2024, 1, 15);
       expect(AppUtils.formatDate(date), '15 Jan 2024');
     });
+
+    test('extractUsnFromScan removes ]C1 prefix', () {
+      expect(AppUtils.extractUsnFromScan(']C14MC22IS100'), '4MC22IS100');
+      expect(AppUtils.extractUsnFromScan(']c14MC22IS100'), '4MC22IS100');
+      expect(AppUtils.extractUsnFromScan('4MC22IS100'), '4MC22IS100');
+    });
   });
 
   group('EventCategory', () {

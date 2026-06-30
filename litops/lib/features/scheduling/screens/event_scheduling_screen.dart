@@ -414,8 +414,10 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen>
                                 ),
                                 Text(
                                   assignmentRole.label,
-                                  style: const TextStyle(
-                                      color: Color(0xFF90CAF9), fontSize: 11),
+                                  style: GoogleFonts.dancingScript(
+                                      color: LitColors.amber,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -588,12 +590,12 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen>
     final constraintsAsync =
         ref.watch(eventConstraintsProvider(_focusedEvent!.id));
     final List<String> branches = [
-      'CS',
-      'IS',
+      'CSE',
+      'ISE',
       'CI',
       'CB',
       'RI',
-      'EC',
+      'ECE',
       'VL',
       'EI',
       'EE',
@@ -713,94 +715,102 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen>
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF131324),
-          title: Text(
-            'Add Branch Limit',
-            style: GoogleFonts.plusJakartaSans(
-                color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Select Branch',
-                  style: TextStyle(color: Colors.white70, fontSize: 12)),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: selectedBranch,
-                    dropdownColor: const Color(0xFF131324),
-                    isExpanded: true,
-                    style: const TextStyle(color: Colors.white),
-                    onChanged: (val) {
-                      if (val != null) selectedBranch = val;
-                    },
-                    items: branches
-                        .map((b) => DropdownMenuItem(value: b, child: Text(b)))
-                        .toList(),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF131324),
+              title: Text(
+                'Add Branch Limit',
+                style: GoogleFonts.plusJakartaSans(
+                    color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Select Branch',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: selectedBranch,
+                        dropdownColor: const Color(0xFF131324),
+                        isExpanded: true,
+                        style: const TextStyle(color: Colors.white),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() {
+                              selectedBranch = val;
+                            });
+                          }
+                        },
+                        items: branches
+                            .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                            .toList(),
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  const Text('Maximum Participants limit',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: limitCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. 15',
+                      hintStyle:
+                          TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.05),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              const Text('Maximum Participants limit',
-                  style: TextStyle(color: Colors.white70, fontSize: 12)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: limitCtrl,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'e.g. 15',
-                  hintStyle:
-                      TextStyle(color: Colors.white.withValues(alpha: 0.4)),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.05),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child:
+                      const Text('Cancel', style: TextStyle(color: Colors.white54)),
                 ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child:
-                  const Text('Cancel', style: TextStyle(color: Colors.white54)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final limit = int.tryParse(limitCtrl.text);
-                if (limit == null || limit <= 0) return;
-                Navigator.pop(context);
+                ElevatedButton(
+                  onPressed: () async {
+                    final limit = int.tryParse(limitCtrl.text);
+                    if (limit == null || limit <= 0) return;
+                    Navigator.pop(context);
 
-                try {
-                  await ref
-                      .read(schedulingControllerProvider)
-                      .saveParticipationConstraint(
-                        eventId: _focusedEvent!.id,
-                        branch: selectedBranch,
-                        maxParticipants: limit,
+                    try {
+                      await ref
+                          .read(schedulingControllerProvider)
+                          .saveParticipationConstraint(
+                            eventId: _focusedEvent!.id,
+                            branch: selectedBranch,
+                            maxParticipants: limit,
+                          );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Branch limit saved successfully')),
                       );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Branch limit saved successfully')),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to save rule: $e')),
-                  );
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to save rule: $e')),
+                      );
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

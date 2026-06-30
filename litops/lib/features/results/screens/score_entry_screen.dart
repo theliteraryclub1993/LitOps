@@ -7,7 +7,6 @@ import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../sarvottam/screens/leaderboard_screen.dart';
-import '../../../core/utils/responsive.dart';
 
 class ScoreEntryScreen extends ConsumerStatefulWidget {
   final String eventId;
@@ -266,7 +265,7 @@ class _ScoreEntryScreenState extends ConsumerState<ScoreEntryScreen> {
                               ),
                             const SizedBox(height: 12),
                             DropdownButtonFormField<ResultPosition>(
-                              value: _positions[reg['id']],
+                              initialValue: _positions[reg['id']],
                               style: const TextStyle(color: Color(0xFFF3ECE2)),
                               dropdownColor: const Color(0xFF1D1A18),
                               decoration: InputDecoration(

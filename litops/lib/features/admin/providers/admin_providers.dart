@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/models.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
+import '../../auth/providers/auth_settings_provider.dart';
+import '../../students/providers/student_providers.dart';
 
 // Providers for reading data
 final pendingProfilesProvider = FutureProvider<List<Profile>>((ref) async {
@@ -404,20 +407,12 @@ class AdminController {
   }
 
   Future<void> removeMember(String assignmentId, String userId) async {
-    // 1. Delete assignment
-    await SupabaseConfig.client
-        .from(SupabaseTables.memberAssignments)
-        .delete()
-        .eq('id', assignmentId);
-
-    // 2. Revert profile role to junior wing
-    await SupabaseConfig.client
-        .from(SupabaseTables.profiles)
-        .update({
-          'role': UserRole.juniorWing.value,
-          'is_active': true,
-        })
-        .eq('id', userId);
+    // Call the delete_member_profile RPC to permanently remove the user,
+    // revert/nullify foreign keys, clean up assignments, and delete auth user.
+    await SupabaseConfig.client.rpc(
+      'delete_member_profile',
+      params: {'target_user_id': userId},
+    );
 
     _ref.invalidate(memberListProvider);
     _ref.invalidate(nonMemberProfilesProvider);
@@ -482,13 +477,107 @@ class AdminController {
     _ref.invalidate(yearlyArchivesProvider);
   }
 
-  Future<void> deleteYearlyArchive(String archiveId) async {
+  /// Deletes a yearly archive and cascades to yearly_imports and student_master.
+  /// Only removes students from student_master whose USNs do NOT appear in
+  /// any other remaining yearly_imports record (cross-year safety).
+  Future<void> deleteYearlyArchive(String archiveId, int festYear) async {
+    // 1. Fetch all yearly_imports rows for this fest_year to extract USNs
+    final importsData = await SupabaseConfig.client
+        .from(SupabaseTables.yearlyImports)
+        .select('id, import_data')
+        .eq('fest_year', festYear);
+
+    final importRows = importsData as List;
+    final Set<String> usnsToDelete = {};
+
+    for (final row in importRows) {
+      final rawData = row['import_data'];
+      if (rawData == null) continue;
+      final List<dynamic> records =
+          rawData is String ? jsonDecode(rawData) : rawData;
+      for (final r in records) {
+        if (r is! Map) continue;
+        final usn = (r['usn'] as String?)?.toUpperCase().trim();
+        if (usn != null && usn.isNotEmpty) {
+          usnsToDelete.add(usn);
+        }
+      }
+    }
+
+    // 2. Cross-year safety: find USNs that appear in OTHER years' imports
+    if (usnsToDelete.isNotEmpty) {
+      final otherImports = await SupabaseConfig.client
+          .from(SupabaseTables.yearlyImports)
+          .select('import_data')
+          .neq('fest_year', festYear);
+
+      final Set<String> usnsInOtherYears = {};
+      for (final row in (otherImports as List)) {
+        final rawData = row['import_data'];
+        if (rawData == null) continue;
+        final List<dynamic> records =
+            rawData is String ? jsonDecode(rawData) : rawData;
+        for (final r in records) {
+          if (r is! Map) continue;
+          final usn = (r['usn'] as String?)?.toUpperCase().trim();
+          if (usn != null && usn.isNotEmpty) {
+            usnsInOtherYears.add(usn);
+          }
+        }
+      }
+
+      // Only delete USNs that are NOT referenced by any other year
+      usnsToDelete.removeAll(usnsInOtherYears);
+    }
+
+    // 3. Delete orphaned students from student_master in chunks
+    if (usnsToDelete.isNotEmpty) {
+      final usnList = usnsToDelete.toList();
+      const chunkSize = 100;
+      for (int i = 0; i < usnList.length; i += chunkSize) {
+        final end = (i + chunkSize > usnList.length)
+            ? usnList.length
+            : i + chunkSize;
+        final chunk = usnList.sublist(i, end);
+        await SupabaseConfig.client
+            .from(SupabaseTables.studentMaster)
+            .delete()
+            .inFilter('usn', chunk);
+      }
+    }
+
+    // 4. Delete yearly_imports rows for this fest_year
+    await SupabaseConfig.client
+        .from(SupabaseTables.yearlyImports)
+        .delete()
+        .eq('fest_year', festYear);
+
+    // 5. Delete the yearly_archives row
     await SupabaseConfig.client
         .from(SupabaseTables.yearlyArchives)
         .delete()
         .eq('id', archiveId);
 
+    // 6. Invalidate all affected providers
     _ref.invalidate(yearlyArchivesProvider);
+    _ref.invalidate(studentMasterListProvider);
+    _ref.invalidate(yearlyImportsListProvider);
+  }
+
+  // ── Sign-In / Registration Control ─────────────────────────────────
+  Future<void> toggleSignIn(bool enabled) async {
+    await upsertAppSetting('sign_in_enabled', enabled.toString());
+    _ref.invalidate(authSettingsProvider);
+  }
+
+  Future<void> toggleRegistration(bool enabled) async {
+    await upsertAppSetting('registration_enabled', enabled.toString());
+    _ref.invalidate(authSettingsProvider);
+  }
+
+  Future<void> updateSignInDisabledMessage(String message) async {
+    await upsertAppSetting('sign_in_disabled_message', message.trim());
+    _ref.invalidate(authSettingsProvider);
   }
 }
 

@@ -12,7 +12,6 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
-import '../../../core/utils/responsive.dart';
 
 final rulebookUploaderEmailProvider = FutureProvider.family<String?, String>((ref, userId) async {
   final data = await SupabaseConfig.client
@@ -291,7 +290,7 @@ class _RulebookManagementScreenState extends ConsumerState<RulebookManagementScr
                           const SizedBox(height: 8),
                           Text(
                             'Upload a PDF to get started',
-                            style: GoogleFonts.plusJakartaSans(color: LitColors.ash.withOpacity(0.6), fontSize: 12),
+                            style: GoogleFonts.plusJakartaSans(color: LitColors.ash.withValues(alpha: 0.6), fontSize: 12),
                           ),
                         ],
                       ),
@@ -348,7 +347,7 @@ class _RulebookManagementScreenState extends ConsumerState<RulebookManagementScr
                       const SizedBox(height: 24),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFEF4444).withOpacity(0.15),
+                          backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.15),
                           foregroundColor: const Color(0xFFEF4444),
                           side: const BorderSide(color: Color(0xFFEF4444), width: 1),
                           padding: const EdgeInsets.symmetric(vertical: 16),

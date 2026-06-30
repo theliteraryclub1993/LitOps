@@ -26,16 +26,16 @@ class _TeamRegistrationScreenState
   bool _saving = false;
 
   final List<String> _branches = [
-    'CS', 'IS', 'CI', 'CB', 'RI', 'EC', 'VL', 'EI', 'EE', 'CV', 'ME'
+    'CSE', 'ISE', 'CI', 'CB', 'RI', 'ECE', 'VL', 'EI', 'EE', 'CV', 'ME'
   ];
 
   static const _branchDisplayNames = {
-    'CS': 'Computer Science',
-    'IS': 'Information Science',
+    'CSE': 'Computer Science',
+    'ISE': 'Information Science',
     'CI': 'Artificial Intelligence and Machine Learning',
     'CB': 'Computer Science and Business Studies',
     'RI': 'Robotics & Intelligence',
-    'EC': 'Electronics & Communication',
+    'ECE': 'Electronics & Communication',
     'VL': 'VLSI',
     'EI': 'Electronics & Instrumentation',
     'EE': 'Electrical & Electronics',
@@ -85,6 +85,30 @@ class _TeamRegistrationScreenState
         }
         return;
       }
+
+      // Check branch participation constraint
+      final constraintsSummary = ref.read(eventConstraintsSummaryProvider(_selectedEvent!.id)).value ?? [];
+      final constraint = constraintsSummary.firstWhere(
+        (c) => c['branch'] == student.branch,
+        orElse: () => {},
+      );
+      if (constraint.isNotEmpty) {
+        final int maxParticipants = constraint['max'] as int;
+        final int currentParticipants = constraint['current'] as int;
+        final int pendingCount = _members.where((m) => m.branch == student.branch).length;
+        
+        if (currentParticipants + pendingCount + 1 > maxParticipants) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Limit exceeded! Only $maxParticipants participants from ${student.branch} are allowed for this event.'),
+                backgroundColor: LitColors.coral,
+              ),
+            );
+          }
+          return;
+        }
+      }
       setState(() {
         _members.add(student);
         _captain ??= student;
@@ -107,6 +131,28 @@ class _TeamRegistrationScreenState
         _members.isEmpty) {
       return;
     }
+
+    // Final safety check for branch participation constraints
+    final constraintsSummary = ref.read(eventConstraintsSummaryProvider(_selectedEvent!.id)).value ?? [];
+    for (final c in constraintsSummary) {
+      final branch = c['branch'] as String;
+      final maxVal = c['max'] as int;
+      final current = c['current'] as int;
+      
+      final toRegisterCount = _members.where((m) => m.branch == branch).length;
+      if (current + toRegisterCount > maxVal) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Branch limit reached: $branch has reached the maximum of $maxVal participants for this event.'),
+              backgroundColor: LitColors.coral,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     setState(() => _saving = true);
     try {
       final profile = ref.read(currentProfileProvider);
@@ -149,6 +195,10 @@ class _TeamRegistrationScreenState
             content: Text(
                 'Team "${_teamNameCtrl.text}" registered with ${_members.length} members'),
             backgroundColor: LitColors.moss));
+        
+        // Invalidate branch constraints summary
+        ref.invalidate(eventConstraintsSummaryProvider(_selectedEvent!.id));
+
         setState(() {
           _members.clear();
           _teamNameCtrl.clear();
@@ -199,7 +249,7 @@ class _TeamRegistrationScreenState
                   borderRadius: 14,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonFormField<Event>(
-                    value: _selectedEvent,
+                    initialValue: _selectedEvent,
                     dropdownColor: LitColors.clay,
                     decoration: const InputDecoration(border: InputBorder.none),
                     items: _events
@@ -230,7 +280,7 @@ class _TeamRegistrationScreenState
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
-                    value: _teamNameCtrl.text.isEmpty ? null : _teamNameCtrl.text,
+                    initialValue: _teamNameCtrl.text.isEmpty ? null : _teamNameCtrl.text,
                     dropdownColor: LitColors.clay,
                     decoration: const InputDecoration(border: InputBorder.none),
                     hint: Text('Select Department (Team Name)', style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 13)),

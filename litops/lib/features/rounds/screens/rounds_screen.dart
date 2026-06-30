@@ -5,7 +5,6 @@ import '../../../core/enums/enums.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
-import '../../../core/utils/responsive.dart';
 
 class RoundsScreen extends ConsumerStatefulWidget {
   final String eventId;

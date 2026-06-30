@@ -6,7 +6,6 @@ import '../../../core/models/models.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../providers/admin_providers.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../../core/utils/responsive.dart';
 
 class YearlyDatabaseScreen extends ConsumerStatefulWidget {
   const YearlyDatabaseScreen({super.key});
@@ -398,20 +397,32 @@ class _YearlyDatabaseScreenState extends ConsumerState<YearlyDatabaseScreen> {
     ConfirmDialog.show(
       context,
       title: 'Delete Yearly Database',
-      message: 'Are you sure you want to permanently delete the database and archives for '
-          '${archive.festName} (${archive.festYear})? This action CANNOT be undone.',
+      message: 'Are you sure you want to permanently delete the database for '
+          '${archive.festName} (${archive.festYear})?\n\n'
+          'This will also remove all associated student records from the '
+          'student database that are not referenced by other years.\n\n'
+          'This action CANNOT be undone.',
       confirmText: 'Delete',
       confirmColor: Colors.redAccent,
       onConfirm: () async {
         try {
-          await ref.read(adminControllerProvider).deleteYearlyArchive(archive.id);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Yearly database deleted successfully')),
-          );
+          await ref.read(adminControllerProvider).deleteYearlyArchive(
+                archive.id,
+                archive.festYear,
+              );
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'Yearly database and associated student records deleted successfully')),
+            );
+          }
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete yearly database: $e')),
-          );
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to delete yearly database: $e')),
+            );
+          }
         }
       },
     );

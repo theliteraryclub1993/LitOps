@@ -37,4 +37,5 @@ class SupabaseTables {
   static const String eventSchedules = 'event_schedules';
   static const String barcodeLogs = 'barcode_logs';
   static const String searchHistory = 'search_history';
+  static const String appSettings = 'app_settings';
 }

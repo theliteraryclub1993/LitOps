@@ -153,37 +153,81 @@ class DashboardScreen extends ConsumerWidget {
           SizedBox(width: context.r.w(16)),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await ref.read(authStateProvider.notifier).refreshProfile();
-          ref.invalidate(dashboardStatsProvider);
-        },
-        child: SingleChildScrollView(
-          padding: context.r.pageInsets,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context, profile),
-              if (profile?.role.isSuperAdmin == true) ...[
-                SizedBox(height: context.r.h(16)),
-                _FadeIn(delay: 100, child: _buildAdminConsoleCard(context)),
-              ],
-              SizedBox(height: context.r.h(16)),
-              _FadeIn(delay: 200, child: _buildBentoGrid(context, statsAsync, profile?.role.canViewAppeals == true && profile?.role.isSuperAdmin != true)),
-              SizedBox(height: context.r.h(24)),
-              _FadeIn(delay: 300, child: _buildSectionTitle(context, 'Quick Services')),
-              SizedBox(height: context.r.h(8)),
-              _FadeIn(delay: 400, child: _buildServicesGrid(context, profile, ref)),
-              SizedBox(height: context.r.h(24)),
-              if (profile != null && _isJuniorWingOrLowerYear(profile)) ...[
-                _FadeIn(delay: 500, child: _buildRulebookCard(context, ref.watch(rulebookStreamProvider))),
-              ] else ...[
-                _FadeIn(delay: 500, child: const LiveRankingsWidget()),
-              ],
-              SizedBox(height: context.r.listBottomPadding),
-            ],
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: () async {
+              await ref.read(authStateProvider.notifier).refreshProfile();
+              ref.invalidate(dashboardStatsProvider);
+            },
+            child: SingleChildScrollView(
+              padding: context.r.pageInsets,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(context, profile),
+                  if (profile?.role.isSuperAdmin == true) ...[
+                    SizedBox(height: context.r.h(16)),
+                    _FadeIn(delay: 100, child: _buildAdminConsoleCard(context)),
+                  ],
+                  SizedBox(height: context.r.h(16)),
+                  _FadeIn(delay: 200, child: _buildBentoGrid(context, statsAsync, profile?.role.canViewAppeals == true && profile?.role.isSuperAdmin != true)),
+                  SizedBox(height: context.r.h(24)),
+                  _FadeIn(delay: 300, child: _buildSectionTitle(context, 'Quick Services')),
+                  SizedBox(height: context.r.h(8)),
+                  _FadeIn(delay: 400, child: _buildServicesGrid(context, profile, ref)),
+                  SizedBox(height: context.r.h(24)),
+                  if (profile != null && _isJuniorWingOrLowerYear(profile)) ...[
+                    _FadeIn(delay: 500, child: _buildRulebookCard(context, ref.watch(rulebookStreamProvider))),
+                  ] else ...[
+                    _FadeIn(delay: 500, child: const LiveRankingsWidget()),
+                  ],
+                  SizedBox(height: context.r.listBottomPadding),
+                ],
+              ),
+            ),
           ),
-        ),
+          Positioned(
+            right: context.r.w(24),
+            bottom: context.r.h(120),
+            child: GestureDetector(
+              onTap: () => context.push('/registration'),
+              child: Container(
+                height: context.r.w(56),
+                width: context.r.w(56),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [LitColors.ember, LitColors.emberDark],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: LitColors.ember.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: const Color(0xFF1A0D05),
+                  size: context.r.icon(26),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -221,75 +265,119 @@ class DashboardScreen extends ConsumerWidget {
           SizedBox(width: r.w(16)),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await ref.read(authStateProvider.notifier).refreshProfile();
-          ref.invalidate(ongoingEventsProvider);
-          ref.invalidate(myAssignedEventsProvider);
-        },
-        child: SingleChildScrollView(
-          padding: r.pageInsets,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context, profile),
-              SizedBox(height: r.h(24)),
-              
-              _FadeIn(delay: 100, child: _buildSectionTitle(context, 'Ongoing Events')),
-              SizedBox(height: r.h(12)),
-              ongoingAsync.when(
-                data: (events) {
-                  if (events.isEmpty) {
-                    return _buildEmptyState(context, 'No events are currently running.');
-                  }
-                  return Column(
-                    children: events.asMap().entries.map((entry) {
-                      return _FadeIn(
-                        delay: 150 + (entry.key * 50),
-                        child: _buildEventCard(context, entry.value, true),
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: () async {
+              await ref.read(authStateProvider.notifier).refreshProfile();
+              ref.invalidate(ongoingEventsProvider);
+              ref.invalidate(myAssignedEventsProvider);
+            },
+            child: SingleChildScrollView(
+              padding: r.pageInsets,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(context, profile),
+                  SizedBox(height: r.h(24)),
+                  
+                  _FadeIn(delay: 100, child: _buildSectionTitle(context, 'Ongoing Events')),
+                  SizedBox(height: r.h(12)),
+                  ongoingAsync.when(
+                    data: (events) {
+                      if (events.isEmpty) {
+                        return _buildEmptyState(context, 'No events are currently running.');
+                      }
+                      return Column(
+                        children: events.asMap().entries.map((entry) {
+                          return _FadeIn(
+                            delay: 150 + (entry.key * 50),
+                            child: _buildEventCard(context, entry.value, true),
+                          );
+                        }).toList(),
                       );
-                    }).toList(),
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
-                error: (e, _) => Text('Error: $e', style: GoogleFonts.plusJakartaSans(color: LitColors.coral, fontSize: r.sp(13))),
-              ),
-              SizedBox(height: r.h(24)),
+                    },
+                    loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
+                    error: (e, _) => Text('Error: $e', style: GoogleFonts.plusJakartaSans(color: LitColors.coral, fontSize: r.sp(13))),
+                  ),
+                  SizedBox(height: r.h(24)),
 
-              _FadeIn(delay: 300, child: _buildSectionTitle(context, 'My Assigned Events')),
-              SizedBox(height: r.h(12)),
-              assignedAsync.when(
-                data: (events) {
-                  if (events.isEmpty) {
-                    return _buildEmptyState(context, 'You have no upcoming assignments.');
-                  }
-                  return Column(
-                    children: events.asMap().entries.map((entry) {
-                      return _FadeIn(
-                        delay: 350 + (entry.key * 50),
-                        child: _buildEventCard(context, entry.value, false),
+                  _FadeIn(delay: 300, child: _buildSectionTitle(context, 'My Assigned Events')),
+                  SizedBox(height: r.h(12)),
+                  assignedAsync.when(
+                    data: (events) {
+                      if (events.isEmpty) {
+                        return _buildEmptyState(context, 'You have no upcoming assignments.');
+                      }
+                      return Column(
+                        children: events.asMap().entries.map((entry) {
+                          return _FadeIn(
+                            delay: 350 + (entry.key * 50),
+                            child: _buildEventCard(context, entry.value, false),
+                          );
+                        }).toList(),
                       );
-                    }).toList(),
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
-                error: (e, _) => Text('Error: $e', style: GoogleFonts.plusJakartaSans(color: LitColors.coral, fontSize: r.sp(13))),
+                    },
+                    loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
+                    error: (e, _) => Text('Error: $e', style: GoogleFonts.plusJakartaSans(color: LitColors.coral, fontSize: r.sp(13))),
+                  ),
+                  SizedBox(height: r.h(24)),
+                  
+                  _FadeIn(delay: 500, child: _buildSectionTitle(context, 'Quick Services')),
+                  SizedBox(height: r.h(12)),
+                  _FadeIn(delay: 600, child: _buildNonAdminServicesGrid(context, profile, ref)),
+                  SizedBox(height: r.h(24)),
+                  if (_isJuniorWingOrLowerYear(profile)) ...[
+                    _FadeIn(delay: 700, child: _buildRulebookCard(context, ref.watch(rulebookStreamProvider))),
+                  ] else ...[
+                    _FadeIn(delay: 700, child: const LiveRankingsWidget()),
+                  ],
+                  SizedBox(height: r.listBottomPadding),
+                ],
               ),
-              SizedBox(height: r.h(24)),
-              
-              _FadeIn(delay: 500, child: _buildSectionTitle(context, 'Quick Services')),
-              SizedBox(height: r.h(12)),
-              _FadeIn(delay: 600, child: _buildNonAdminServicesGrid(context, profile, ref)),
-              SizedBox(height: r.h(24)),
-              if (_isJuniorWingOrLowerYear(profile)) ...[
-                _FadeIn(delay: 700, child: _buildRulebookCard(context, ref.watch(rulebookStreamProvider))),
-              ] else ...[
-                _FadeIn(delay: 700, child: const LiveRankingsWidget()),
-              ],
-              SizedBox(height: r.listBottomPadding),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            right: r.w(24),
+            bottom: r.h(120),
+            child: GestureDetector(
+              onTap: () => context.push('/registration'),
+              child: Container(
+                height: r.w(56),
+                width: r.w(56),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [LitColors.ember, LitColors.emberDark],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: LitColors.ember.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: const Color(0xFF1A0D05),
+                  size: r.icon(26),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -474,7 +562,7 @@ class DashboardScreen extends ConsumerWidget {
             ],
           ),
         ),
-        StatusChip(label: profile?.role.name ?? 'Crew'),
+        StatusChip(label: profile?.role.label ?? 'Crew', isCursive: true, color: LitColors.amber),
       ],
     );
   }

@@ -8,7 +8,6 @@ import '../../../core/widgets/common_widgets.dart';
 import '../../../core/utils/responsive.dart';
 
 
-import '../../../core/theme/theme.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/utils/app_utils.dart';
@@ -16,44 +15,154 @@ import '../../auth/providers/auth_provider.dart';
 
 final eventDetailProvider = StreamProvider.family<Event, String>((ref, eventId) async* {
   print('📡 [Realtime] eventDetailProvider starting for $eventId');
+  bool hasData = false;
   try {
-    final stream = SupabaseConfig.client
+    final res = await SupabaseConfig.client
         .from(SupabaseTables.events)
-        .stream(primaryKey: ['id'])
-        .eq('id', eventId);
-
-    await for (final data in stream) {
-      print('📡 [Realtime] eventDetailProvider received data: $data');
-      if (data.isNotEmpty) {
-        yield Event.fromJson(data.first);
-      }
+        .select()
+        .eq('id', eventId)
+        .maybeSingle();
+    if (res != null) {
+      yield Event.fromJson(res);
+      hasData = true;
     }
   } catch (e) {
-    print('❌ [Realtime] eventDetailProvider error: $e');
-    rethrow;
+    print('⚠️ [Realtime] eventDetailProvider initial REST fetch failed: $e');
+  }
+
+  while (true) {
+    try {
+      final stream = SupabaseConfig.client
+          .from(SupabaseTables.events)
+          .stream(primaryKey: ['id'])
+          .eq('id', eventId);
+
+      await for (final data in stream) {
+        print('📡 [Realtime] eventDetailProvider received data: $data');
+        if (data.isNotEmpty) {
+          yield Event.fromJson(data.first);
+          hasData = true;
+        }
+      }
+    } catch (e) {
+      print('❌ [Realtime] eventDetailProvider stream error: $e');
+      try {
+        final res = await SupabaseConfig.client
+            .from(SupabaseTables.events)
+            .select()
+            .eq('id', eventId)
+            .maybeSingle();
+        if (res != null) {
+          yield Event.fromJson(res);
+          hasData = true;
+        }
+      } catch (restError) {
+        print('⚠️ [Realtime] eventDetailProvider backup REST fetch failed: $restError');
+      }
+
+      if (!hasData) {
+        rethrow;
+      }
+      print('📡 [Realtime] eventDetailProvider retrying subscription in 5 seconds...');
+      await Future.delayed(const Duration(seconds: 5));
+    }
   }
 });
 
 final eventRegistrationsCountProvider = StreamProvider.family<int, String>((ref, eventId) async* {
-  final stream = SupabaseConfig.client
-      .from(SupabaseTables.registrations)
-      .stream(primaryKey: ['id'])
-      .eq('event_id', eventId);
-
-  await for (final data in stream) {
-    final count = data.where((r) => r['is_cancelled'] == false).length;
+  print('📡 [Realtime] eventRegistrationsCountProvider starting for $eventId');
+  bool hasData = false;
+  try {
+    final res = await SupabaseConfig.client
+        .from(SupabaseTables.registrations)
+        .select()
+        .eq('event_id', eventId);
+    final count = res.where((r) => r['is_cancelled'] == false).length;
     yield count;
+    hasData = true;
+  } catch (e) {
+    print('⚠️ [Realtime] eventRegistrationsCountProvider initial REST fetch failed: $e');
+  }
+
+  while (true) {
+    try {
+      final stream = SupabaseConfig.client
+          .from(SupabaseTables.registrations)
+          .stream(primaryKey: ['id'])
+          .eq('event_id', eventId);
+
+      await for (final data in stream) {
+        final count = data.where((r) => r['is_cancelled'] == false).length;
+        yield count;
+        hasData = true;
+      }
+    } catch (e) {
+      print('❌ [Realtime] eventRegistrationsCountProvider stream error: $e');
+      try {
+        final res = await SupabaseConfig.client
+            .from(SupabaseTables.registrations)
+            .select()
+            .eq('event_id', eventId);
+        final count = res.where((r) => r['is_cancelled'] == false).length;
+        yield count;
+        hasData = true;
+      } catch (restError) {
+        print('⚠️ [Realtime] eventRegistrationsCountProvider backup REST fetch failed: $restError');
+      }
+
+      if (!hasData) {
+        rethrow;
+      }
+      print('📡 [Realtime] eventRegistrationsCountProvider retrying subscription in 5 seconds...');
+      await Future.delayed(const Duration(seconds: 5));
+    }
   }
 });
 
 final eventAttendanceCountProvider = StreamProvider.family<int, String>((ref, eventId) async* {
-  final stream = SupabaseConfig.client
-      .from(SupabaseTables.attendance)
-      .stream(primaryKey: ['id'])
-      .eq('event_id', eventId);
+  print('📡 [Realtime] eventAttendanceCountProvider starting for $eventId');
+  bool hasData = false;
+  try {
+    final res = await SupabaseConfig.client
+        .from(SupabaseTables.attendance)
+        .select()
+        .eq('event_id', eventId);
+    yield res.length;
+    hasData = true;
+  } catch (e) {
+    print('⚠️ [Realtime] eventAttendanceCountProvider initial REST fetch failed: $e');
+  }
 
-  await for (final data in stream) {
-    yield data.length;
+  while (true) {
+    try {
+      final stream = SupabaseConfig.client
+          .from(SupabaseTables.attendance)
+          .stream(primaryKey: ['id'])
+          .eq('event_id', eventId);
+
+      await for (final data in stream) {
+        yield data.length;
+        hasData = true;
+      }
+    } catch (e) {
+      print('❌ [Realtime] eventAttendanceCountProvider stream error: $e');
+      try {
+        final res = await SupabaseConfig.client
+            .from(SupabaseTables.attendance)
+            .select()
+            .eq('event_id', eventId);
+        yield res.length;
+        hasData = true;
+      } catch (restError) {
+        print('⚠️ [Realtime] eventAttendanceCountProvider backup REST fetch failed: $restError');
+      }
+
+      if (!hasData) {
+        rethrow;
+      }
+      print('📡 [Realtime] eventAttendanceCountProvider retrying subscription in 5 seconds...');
+      await Future.delayed(const Duration(seconds: 5));
+    }
   }
 });
 
@@ -86,6 +195,14 @@ class EventDetailScreen extends ConsumerWidget {
           style: GoogleFonts.fredoka(fontWeight: FontWeight.w600, fontSize: context.r.sp(16), color: LitColors.bone),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: LitColors.bone),
+            onPressed: () {
+              ref.invalidate(eventDetailProvider(eventId));
+              ref.invalidate(eventRegistrationsCountProvider(eventId));
+              ref.invalidate(eventAttendanceCountProvider(eventId));
+            },
+          ),
           if (role.canManageEvents || profile?.year == 4)
             PopupMenuButton<String>(
               color: LitColors.clay,
@@ -214,8 +331,20 @@ class EventDetailScreen extends ConsumerWidget {
           return Column(
             children: [
               Expanded(
-                child: SingleChildScrollView(
-                  padding: context.r.pageInsets,
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    ref.invalidate(eventDetailProvider(eventId));
+                    ref.invalidate(eventRegistrationsCountProvider(eventId));
+                    ref.invalidate(eventAttendanceCountProvider(eventId));
+                    try {
+                      await ref.read(eventDetailProvider(eventId).future);
+                    } catch (_) {}
+                  },
+                  color: LitColors.ember,
+                  backgroundColor: LitColors.clay,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: context.r.pageInsets,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -409,6 +538,7 @@ class EventDetailScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+            ),
 
               // Bottom Register Bar
               Container(
@@ -452,7 +582,14 @@ class EventDetailScreen extends ConsumerWidget {
           );
         },
         loading: () => const LoadingView(),
-        error: (e, _) => ErrorView(message: e.toString()),
+        error: (e, _) => ErrorView(
+          message: e.toString(),
+          onRetry: () {
+            ref.invalidate(eventDetailProvider(eventId));
+            ref.invalidate(eventRegistrationsCountProvider(eventId));
+            ref.invalidate(eventAttendanceCountProvider(eventId));
+          },
+        ),
       ),
     );
   }

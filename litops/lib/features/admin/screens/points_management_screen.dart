@@ -9,7 +9,6 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../providers/admin_providers.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../../core/utils/responsive.dart';
 
 // Local provider for loading events
 final adminEventsProvider = FutureProvider<List<Event>>((ref) async {
@@ -385,7 +384,7 @@ class _AllocatePointsSheetState extends ConsumerState<_AllocatePointsSheet> {
   bool _isSaving = false;
 
   final List<String> _branches = [
-    'CS', 'IS', 'CI', 'CB', 'RI', 'EC', 'VL', 'EI', 'EE', 'CV', 'ME'
+    'CSE', 'ISE', 'CI', 'CB', 'RI', 'ECE', 'VL', 'EI', 'EE', 'CV', 'ME'
   ];
 
   @override

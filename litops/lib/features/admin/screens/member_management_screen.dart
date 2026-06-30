@@ -194,15 +194,15 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
                       Container(
                         padding: EdgeInsets.symmetric(horizontal: r.w(10), vertical: r.h(4)),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                          color: LitColors.amber.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(r.radius(8)),
                         ),
                         child: Text(
                           member.role.label,
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Theme.of(context).colorScheme.primary,
-                            fontSize: r.sp(11),
-                            fontWeight: FontWeight.w600,
+                          style: GoogleFonts.dancingScript(
+                            color: LitColors.amber,
+                            fontSize: r.sp(14),
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
@@ -935,8 +935,8 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
     ConfirmDialog.show(
       context,
       title: 'Remove Member',
-      message: 'Are you sure you want to remove ${member.memberName} from Lit Life? '
-          'Their profile access level will revert to Junior Wing.',
+      message: 'Are you sure you want to permanently remove ${member.memberName}? '
+          'This will delete their account and all associated data, preventing them from logging in.',
       confirmText: 'Remove',
       confirmColor: Colors.redAccent,
       onConfirm: () async {

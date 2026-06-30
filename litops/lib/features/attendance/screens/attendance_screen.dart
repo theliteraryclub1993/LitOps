@@ -7,7 +7,6 @@ import '../../../core/widgets/common_widgets.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../../core/utils/responsive.dart';
 
 // Stream triggers for realtime updates
 final _attendanceRegistrationsStream = StreamProvider.family((ref, String eventId) => 

@@ -223,7 +223,7 @@ class RegisteredParticipantsScreen extends ConsumerWidget {
                   student.usn,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 10,
-                    color: LitColors.ash.withOpacity(0.7),
+                    color: LitColors.ash.withValues(alpha: 0.7),
                   ),
                 ),
               ],

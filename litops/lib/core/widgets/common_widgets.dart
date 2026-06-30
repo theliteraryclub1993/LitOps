@@ -68,7 +68,7 @@ class RadialGlowPainter extends CustomPainter {
     final paint1 = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFFFF6A2C).withOpacity(0.16),
+          const Color(0xFFFF6A2C).withValues(alpha: 0.16),
           Colors.transparent,
         ],
       ).createShader(Rect.fromCircle(center: Offset(size.width * 0.18, 0), radius: size.width * 0.8));
@@ -76,7 +76,7 @@ class RadialGlowPainter extends CustomPainter {
     final paint2 = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFFFFB14D).withOpacity(0.07),
+          const Color(0xFFFFB14D).withValues(alpha: 0.07),
           Colors.transparent,
         ],
       ).createShader(Rect.fromCircle(center: Offset(size.width, size.height * 0.2), radius: size.width * 0.7));
@@ -149,12 +149,12 @@ class ClayCard extends StatelessWidget {
         border: borderColor != null ? Border.all(color: borderColor!, width: 1.3) : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.55),
+            color: Colors.black.withValues(alpha: 0.55),
             offset: const Offset(7, 7),
             blurRadius: 15,
           ),
           BoxShadow(
-            color: Colors.white.withOpacity(0.025),
+            color: Colors.white.withValues(alpha: 0.025),
             offset: const Offset(-4, -4),
             blurRadius: 10,
           ),
@@ -216,12 +216,12 @@ class ClayInsetCard extends StatelessWidget {
             borderRadius: br,
             insetShadows: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 offset: const Offset(5, 5),
                 blurRadius: 11,
               ),
               BoxShadow(
-                color: Colors.white.withOpacity(0.02),
+                color: Colors.white.withValues(alpha: 0.02),
                 offset: const Offset(-3, -3),
                 blurRadius: 8,
               ),
@@ -272,13 +272,13 @@ class _ClayButtonState extends State<ClayButton> {
     
     // Background style
     Decoration decoration;
-    Color textColor = disabled ? LitColors.ash.withOpacity(0.5) : LitColors.bone;
+    Color textColor = disabled ? LitColors.ash.withValues(alpha: 0.5) : LitColors.bone;
     
     final br = BorderRadius.circular(widget.borderRadius);
     
     if (disabled) {
       decoration = BoxDecoration(
-        color: LitColors.clay2.withOpacity(0.5),
+        color: LitColors.clay2.withValues(alpha: 0.5),
         borderRadius: br,
       );
     } else if (widget.isGhost) {
@@ -287,27 +287,24 @@ class _ClayButtonState extends State<ClayButton> {
         borderRadius: br,
         boxShadow: _isPressed
             ? [
-                BoxShadow(color: Colors.black.withOpacity(0.25), offset: const Offset(1.5, 1.5), blurRadius: 4),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.25), offset: const Offset(1.5, 1.5), blurRadius: 4),
               ]
             : [
-                BoxShadow(color: Colors.black.withOpacity(0.5), offset: const Offset(5, 5), blurRadius: 11),
-                BoxShadow(color: Colors.white.withOpacity(0.02), offset: const Offset(-3, -3), blurRadius: 7),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.5), offset: const Offset(5, 5), blurRadius: 11),
+                BoxShadow(color: Colors.white.withValues(alpha: 0.02), offset: const Offset(-3, -3), blurRadius: 7),
               ],
       );
     } else if (widget.isDanger) {
+      textColor = const Color(0xFF1A0D05);
       decoration = BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [LitColors.coral, Color(0xFFA23A3A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: br,
         boxShadow: _isPressed
             ? [
-                BoxShadow(color: Colors.black.withOpacity(0.25), offset: const Offset(1.5, 1.5), blurRadius: 4),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.25), offset: const Offset(1.5, 1.5), blurRadius: 4),
               ]
             : [
-                BoxShadow(color: Colors.black.withOpacity(0.5), offset: const Offset(6, 6), blurRadius: 13),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.5), offset: const Offset(6, 6), blurRadius: 13),
               ],
       );
     } else {
@@ -322,10 +319,10 @@ class _ClayButtonState extends State<ClayButton> {
         borderRadius: br,
         boxShadow: _isPressed
             ? [
-                BoxShadow(color: Colors.black.withOpacity(0.25), offset: const Offset(1.5, 1.5), blurRadius: 4),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.25), offset: const Offset(1.5, 1.5), blurRadius: 4),
               ]
             : [
-                BoxShadow(color: Colors.black.withOpacity(0.5), offset: const Offset(6, 6), blurRadius: 13),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.5), offset: const Offset(6, 6), blurRadius: 13),
               ],
       );
     }
@@ -345,16 +342,16 @@ class _ClayButtonState extends State<ClayButton> {
       ),
     );
 
-    // Apply inner shadow decoration on top for primary button
-    if (!disabled && widget.isPrimary && !widget.isGhost && !widget.isDanger) {
+    // Apply inner shadow decoration on top for primary or danger button
+    if (!disabled && (widget.isPrimary || widget.isDanger) && !widget.isGhost) {
       content = ClipRRect(
         borderRadius: br,
         child: CustomPaint(
           painter: InsetShadowPainter(
             borderRadius: br,
             insetShadows: [
-              BoxShadow(color: Colors.white.withOpacity(0.35), offset: const Offset(1.5, 1.5), blurRadius: 2),
-              BoxShadow(color: Colors.black.withOpacity(0.3), offset: const Offset(-1.5, -1.5), blurRadius: 4),
+              BoxShadow(color: Colors.white.withValues(alpha: 0.35), offset: const Offset(1.5, 1.5), blurRadius: 2),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.3), offset: const Offset(-1.5, -1.5), blurRadius: 4),
             ],
           ),
           child: Container(
@@ -446,7 +443,7 @@ class ClayTextField extends StatelessWidget {
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: GoogleFonts.plusJakartaSans(
-            color: LitColors.ash.withOpacity(0.5),
+            color: LitColors.ash.withValues(alpha: 0.5),
             fontSize: r.sp(12),
           ),
           prefixIcon: prefixIcon != null
@@ -497,7 +494,7 @@ class ClayProgressBar extends StatelessWidget {
             borderRadius: br,
             insetShadows: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 offset: const Offset(2, 2),
                 blurRadius: 4,
               ),
@@ -558,7 +555,7 @@ class ClaySwitch extends StatelessWidget {
               borderRadius: br,
               insetShadows: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.55),
+                  color: Colors.black.withValues(alpha: 0.55),
                   offset: Offset(r.w(2), r.w(2)),
                   blurRadius: r.radius(4),
                 ),
@@ -595,6 +592,7 @@ class LitLifeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
   final Widget? leading;
   final bool showBack;
+  final PreferredSizeWidget? bottom;
 
   const LitLifeAppBar({
     super.key,
@@ -602,6 +600,7 @@ class LitLifeAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions,
     this.leading,
     this.showBack = false,
+    this.bottom,
   });
 
   @override
@@ -634,11 +633,12 @@ class LitLifeAppBar extends StatelessWidget implements PreferredSizeWidget {
           : null,
       automaticallyImplyLeading: showBack,
       actions: actions,
+      bottom: bottom,
     );
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0.0));
 }
 
 // ── Loading, Error, Empty Views ──────────────────────────────────────────────
@@ -741,7 +741,7 @@ class EmptyView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: r.icon(80), color: LitColors.ash.withOpacity(0.5)),
+            Icon(icon, size: r.icon(80), color: LitColors.ash.withValues(alpha: 0.5)),
             SizedBox(height: r.h(16)),
             Text(
               title,
@@ -799,12 +799,12 @@ class StatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(r.radius(14)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             offset: const Offset(4, 4),
             blurRadius: 9,
           ),
           BoxShadow(
-            color: Colors.white.withOpacity(0.02),
+            color: Colors.white.withValues(alpha: 0.02),
             offset: const Offset(-2, -2),
             blurRadius: 5,
           ),
@@ -848,39 +848,48 @@ class StatCard extends StatelessWidget {
 class StatusChip extends StatelessWidget {
   final String label;
   final Color? color;
+  final bool isCursive;
 
-  const StatusChip({super.key, required this.label, this.color});
+  const StatusChip({super.key, required this.label, this.color, this.isCursive = false});
 
   @override
   Widget build(BuildContext context) {
     final r = Responsive(context);
     // Map status label to standard status colors matching html
-    Color chipColor = LitColors.ash;
+    Color chipColor = color ?? LitColors.ash;
     final lower = label.toLowerCase().replaceAll(' ', '_');
-    if (lower == 'ongoing' || lower == 'live') {
-      chipColor = LitColors.ember;
-    } else if (lower == 'reg._open' || lower == 'registration_open' || lower == 'completed' || lower == 'present') {
-      chipColor = LitColors.moss;
-    } else if (lower == 'pending') {
-      chipColor = LitColors.amber;
-    } else if (lower == 'danger' || lower == 'alert' || lower == 'incident' || lower.contains('pending')) {
-      chipColor = LitColors.coral;
+    if (color == null) {
+      if (lower == 'ongoing' || lower == 'live') {
+        chipColor = LitColors.ember;
+      } else if (lower == 'reg._open' || lower == 'registration_open' || lower == 'completed' || lower == 'present') {
+        chipColor = LitColors.moss;
+      } else if (lower == 'pending') {
+        chipColor = LitColors.amber;
+      } else if (lower == 'danger' || lower == 'alert' || lower == 'incident' || lower.contains('pending')) {
+        chipColor = LitColors.coral;
+      }
     }
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: r.w(9), vertical: r.h(3)),
       decoration: BoxDecoration(
-        color: chipColor.withOpacity(0.18),
+        color: chipColor.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(r.radius(20)),
       ),
       child: Text(
         label,
-        style: GoogleFonts.plusJakartaSans(
-          color: chipColor,
-          fontSize: r.sp(9.5),
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.02,
-        ),
+        style: isCursive
+            ? GoogleFonts.dancingScript(
+                color: chipColor,
+                fontSize: r.sp(12.5),
+                fontWeight: FontWeight.bold,
+              )
+            : GoogleFonts.plusJakartaSans(
+                color: chipColor,
+                fontSize: r.sp(9.5),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.02,
+              ),
       ),
     );
   }
@@ -928,7 +937,7 @@ class CategoryChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(r.radius(30)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha: 0.5),
                 offset: Offset(r.w(3), r.w(3)),
                 blurRadius: r.radius(7),
               ),
@@ -962,12 +971,12 @@ class CategoryChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(r.radius(30)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               offset: Offset(r.w(3), r.w(3)),
               blurRadius: r.radius(7),
             ),
             BoxShadow(
-              color: Colors.white.withOpacity(0.02),
+              color: Colors.white.withValues(alpha: 0.02),
               offset: Offset(r.w(-2), r.w(-2)),
               blurRadius: r.radius(5),
             ),
@@ -1173,7 +1182,7 @@ class UserAvatar extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             offset: const Offset(3, 3),
             blurRadius: 6,
           ),

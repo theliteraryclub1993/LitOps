@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/utils/app_utils.dart';
-import '../../../core/utils/responsive.dart';
 
 class AddStudentScreen extends ConsumerStatefulWidget {
   const AddStudentScreen({super.key});
@@ -18,14 +17,40 @@ class _AddStudentScreenState extends ConsumerState<AddStudentScreen> {
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  String _branch = 'CS';
+  String _branch = 'CSE';
   int _year = 1;
   String _section = 'A';
   bool _saving = false;
 
   @override
+  void initState() {
+    super.initState();
+    _usnCtrl.addListener(_onUsnChanged);
+  }
+
+  /// Pre-fills branch and year dropdowns based on the typed USN.
+  /// This is a UI CONVENIENCE ONLY — the user can change the dropdown values
+  /// before saving. The USN itself is stored exactly as typed (uppercased + trimmed).
+  /// The admission year embedded in the USN (e.g., '22' in 4MC22CS001) is NEVER modified.
+  void _onUsnChanged() {
+    final usn = _usnCtrl.text.trim().toUpperCase();
+    final inferredBranch = AppUtils.extractBranchFromUsn(usn);
+    final inferredYear = AppUtils.inferCurrentStudyYearFromUsn(usn);
+    if (AppUtils.branches.contains(inferredBranch)) {
+      setState(() => _branch = inferredBranch);
+    }
+    if (inferredYear != null) {
+      setState(() => _year = inferredYear);
+    }
+  }
+
+  @override
   void dispose() {
-    _usnCtrl.dispose(); _nameCtrl.dispose(); _phoneCtrl.dispose(); _emailCtrl.dispose();
+    _usnCtrl.removeListener(_onUsnChanged);
+    _usnCtrl.dispose();
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
   }
 

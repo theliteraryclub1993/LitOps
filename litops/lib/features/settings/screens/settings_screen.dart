@@ -89,9 +89,10 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   subtitle: Text(
                     profile?.role.label ?? 'Loading...',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: LitColors.ash,
-                      fontSize: r.sp(11),
+                    style: GoogleFonts.dancingScript(
+                      color: LitColors.amber,
+                      fontSize: r.sp(14),
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),

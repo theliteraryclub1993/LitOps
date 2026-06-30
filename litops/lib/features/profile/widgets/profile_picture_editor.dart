@@ -216,7 +216,7 @@ class _ProfilePictureEditorState extends State<ProfilePictureEditor> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
-                  color: LitColors.clay.withOpacity(0.85),
+                  color: LitColors.clay.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(color: LitColors.border, width: 1.5),
                   boxShadow: const [
@@ -268,7 +268,7 @@ class CropMaskPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final maskPaint = Paint()
-      ..color = Colors.black.withOpacity(0.75)
+      ..color = Colors.black.withValues(alpha: 0.75)
       ..style = PaintingStyle.fill;
 
     final maskPath = Path()
@@ -292,7 +292,7 @@ class CropMaskPainter extends CustomPainter {
 
     // Draw circular border
     final borderPaint = Paint()
-      ..color = LitColors.ember.withOpacity(0.8)
+      ..color = LitColors.ember.withValues(alpha: 0.8)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
 

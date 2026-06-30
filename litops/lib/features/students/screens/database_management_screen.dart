@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../../core/utils/responsive.dart';
 
 class DatabaseManagementScreen extends ConsumerWidget {
   const DatabaseManagementScreen({super.key});
@@ -208,7 +207,10 @@ class DatabaseManagementScreen extends ConsumerWidget {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, confirmCtrl.text == 'DELETE STUDENT DATABASE'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF1A0D05),
+            ),
             child: const Text('DELETE'),
           ),
         ],

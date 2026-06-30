@@ -6,7 +6,6 @@ import '../../../core/enums/enums.dart';
 import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
-import '../../../core/theme/theme.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'event_detail_screen.dart';
@@ -265,7 +264,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                         ),
                         SizedBox(height: r.h(8)),
                         DropdownButtonFormField<EventCategory>(
-                          value: _category,
+                          initialValue: _category,
                           dropdownColor: LitColors.clay,
                           style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
                           decoration: InputDecoration(
@@ -306,7 +305,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                         ),
                         SizedBox(height: r.h(8)),
                         DropdownButtonFormField<EventStatus>(
-                          value: _status,
+                          initialValue: _status,
                           dropdownColor: LitColors.clay,
                           style: GoogleFonts.plusJakartaSans(color: LitColors.bone),
                           decoration: InputDecoration(
@@ -463,8 +462,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                                       onPrimary: Colors.white,
                                       surface: LitColors.clay,
                                       onSurface: LitColors.bone,
-                                    ),
-                                    dialogBackgroundColor: LitColors.void_,
+                                    ), dialogTheme: DialogThemeData(backgroundColor: LitColors.void_),
                                   ),
                                   child: child!,
                                 );
@@ -519,8 +517,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                                       onPrimary: Colors.white,
                                       surface: LitColors.clay,
                                       onSurface: LitColors.bone,
-                                    ),
-                                    dialogBackgroundColor: LitColors.void_,
+                                    ), dialogTheme: DialogThemeData(backgroundColor: LitColors.void_),
                                   ),
                                   child: child!,
                                 );
@@ -577,8 +574,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                                       onPrimary: Colors.white,
                                       surface: LitColors.clay,
                                       onSurface: LitColors.bone,
-                                    ),
-                                    dialogBackgroundColor: LitColors.void_,
+                                    ), dialogTheme: DialogThemeData(backgroundColor: LitColors.void_),
                                   ),
                                   child: child!,
                                 );

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/models/models.dart';
 import '../../../core/enums/enums.dart';
 import '../providers/admin_providers.dart';
+import '../../auth/providers/auth_settings_provider.dart';
 import '../../../core/utils/responsive.dart';
 
 class AdminDashboardScreen extends ConsumerWidget {
@@ -54,14 +55,15 @@ class AdminDashboardScreen extends ConsumerWidget {
                       shadows: [
                         const Shadow(
                           color: Color(0xFFFF6A2C),
-                          blurRadius: 15,
+                          blurRadius: 10,
                         ),
                       ],
                     ),
                   ),
                 ),
                 leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                  icon:
+                      const Icon(Icons.arrow_back_ios_new, color: Colors.white),
                   onPressed: () => context.go('/dashboard'),
                 ),
               ),
@@ -69,11 +71,16 @@ class AdminDashboardScreen extends ConsumerWidget {
               // Overview Stats Cards
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0, vertical: 10.0),
                   child: membersAsync.when(
                     data: (members) {
-                      final activeCount = members.where((m) => m.status == MemberStatus.active).length;
-                      final suspendedCount = members.where((m) => m.status == MemberStatus.suspended).length;
+                      final activeCount = members
+                          .where((m) => m.status == MemberStatus.active)
+                          .length;
+                      final suspendedCount = members
+                          .where((m) => m.status == MemberStatus.suspended)
+                          .length;
 
                       return Row(
                         children: [
@@ -115,7 +122,8 @@ class AdminDashboardScreen extends ConsumerWidget {
               // Second Row of Overview Stats (Archives & Audits)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20.0, vertical: 4.0),
                   child: Row(
                     children: [
                       Expanded(
@@ -127,7 +135,8 @@ class AdminDashboardScreen extends ConsumerWidget {
                             icon: Icons.storage_rounded,
                             accentColor: const Color(0xFFF59E0B),
                           ),
-                          loading: () => const Center(child: CircularProgressIndicator()),
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
                           error: (e, _) => const SizedBox(),
                         ),
                       ),
@@ -141,7 +150,8 @@ class AdminDashboardScreen extends ConsumerWidget {
                             icon: Icons.history_edu_rounded,
                             accentColor: const Color(0xFFEC4899),
                           ),
-                          loading: () => const Center(child: CircularProgressIndicator()),
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
                           error: (e, _) => const SizedBox(),
                         ),
                       ),
@@ -150,10 +160,22 @@ class AdminDashboardScreen extends ConsumerWidget {
                 ),
               ),
 
+              // Authentication Control (Super Admin)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                      left: 20, right: 20, top: 8, bottom: 12),
+                  child: _AuthControlSummaryCard(
+                    onManage: () => context.push('/admin/auth-control'),
+                  ),
+                ),
+              ),
+
               // Quick Actions Header
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 20, right: 20, top: 24, bottom: 12),
+                  padding: const EdgeInsets.only(
+                      left: 20, right: 20, top: 24, bottom: 12),
                   child: Text(
                     'Administrative Controls',
                     style: GoogleFonts.plusJakartaSans(
@@ -174,6 +196,14 @@ class AdminDashboardScreen extends ConsumerWidget {
                   crossAxisSpacing: r.w(16),
                   childAspectRatio: r.isSmall ? 2.0 : 1.15,
                   children: [
+                    _buildQuickActionCard(
+                      context,
+                      title: 'Authentication',
+                      subtitle: 'Open or close sign-in & registration',
+                      icon: Icons.lock_clock_rounded,
+                      color: const Color(0xFF3B82F6),
+                      route: '/admin/auth-control',
+                    ),
                     _buildQuickActionCard(
                       context,
                       title: 'Pending Approvals',
@@ -229,7 +259,8 @@ class AdminDashboardScreen extends ConsumerWidget {
               // Audit Logs & Activity Feed Section
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 20, right: 20, top: 32, bottom: 12),
+                  padding: const EdgeInsets.only(
+                      left: 20, right: 20, top: 32, bottom: 12),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -258,7 +289,8 @@ class AdminDashboardScreen extends ConsumerWidget {
 
               // Feed list
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
                 sliver: auditLogsAsync.when(
                   data: (logs) {
                     if (logs.isEmpty) {
@@ -452,7 +484,7 @@ class AdminDashboardScreen extends ConsumerWidget {
 
   Widget _buildAuditListItem(AuditExtended log) {
     final dateStr = DateFormat('MMM d, h:mm a').format(log.createdAt);
-    
+
     // Choose icon based on action
     IconData actionIcon;
     Color iconColor;
@@ -565,5 +597,121 @@ class AdminDashboardScreen extends ConsumerWidget {
       }
     }
     return 'Entity ID: ${log.entityId ?? "unknown"}';
+  }
+}
+
+class _AuthControlSummaryCard extends ConsumerWidget {
+  final VoidCallback onManage;
+
+  const _AuthControlSummaryCard({required this.onManage});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settingsAsync = ref.watch(authSettingsProvider);
+
+    return settingsAsync.when(
+      loading: () => const SizedBox(
+        height: 88,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (settings) {
+        final signInOpen = settings.signInEnabled;
+        final registrationOpen = settings.registrationEnabled;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1D1A18),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFF262220)),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onManage,
+              borderRadius: BorderRadius.circular(24),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.lock_clock_rounded,
+                        color: Color(0xFF3B82F6),
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Authentication Control',
+                            style: GoogleFonts.plusJakartaSans(
+                              color: const Color(0xFFF3ECE2),
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              _StatusChip(
+                                label: 'Sign In',
+                                isOpen: signInOpen,
+                              ),
+                              const SizedBox(width: 8),
+                              _StatusChip(
+                                label: 'Registration',
+                                isOpen: registrationOpen,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Color(0xFF8C857C)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final bool isOpen;
+
+  const _StatusChip({required this.label, required this.isOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isOpen ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        '$label: ${isOpen ? 'Open' : 'Closed'}',
+        style: GoogleFonts.plusJakartaSans(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 }

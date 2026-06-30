@@ -5,7 +5,6 @@ import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/widgets/common_widgets.dart';
 import 'dashboard_screen.dart';
-import '../../../core/utils/responsive.dart';
 
 class RulebookViewerScreen extends ConsumerWidget {
   final String fileUrl;

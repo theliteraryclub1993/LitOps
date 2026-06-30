@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
-import '../../../core/utils/responsive.dart';
 
 class WaitingListScreen extends ConsumerStatefulWidget {
   final String eventId;

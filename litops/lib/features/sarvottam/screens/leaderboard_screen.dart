@@ -1,15 +1,19 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/models/models.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/enums/enums.dart';
+import '../../../core/utils/app_utils.dart';
+import '../../../core/utils/responsive.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../auth/providers/auth_provider.dart';
-
+import '../../results/screens/results_screen.dart'; // To use ResultsStandingsSheet
 
 class DepartmentResult {
   final String department;
@@ -42,123 +46,187 @@ class EventResult {
 final leaderboardProvider = StreamProvider<List<DepartmentResult>>((ref) async* {
   // List of ALL participating departments
   final allDepartments = [
-    'CS', 'IS', 'CI', 'CB', 'RI', 'EC', 'VL', 'EI', 'EE', 'CV', 'ME'
+    'CSE', 'ISE', 'CI', 'CB', 'RI', 'ECE', 'VL', 'EI', 'EE', 'CV', 'ME'
   ];
 
-  // Watch for changes in event points
-  final pointsStream = SupabaseConfig.client
-      .from(SupabaseTables.eventPoints)
+  // Watch for changes in results and events to rebuild standings in real-time
+  final resultsStream = SupabaseConfig.client
+      .from(SupabaseTables.results)
       .stream(primaryKey: ['id']);
 
-  await for (final _ in pointsStream) {
-    // Fetch event points and all events separately to ensure we get event names
-    final pointsData = await SupabaseConfig.client
-        .from(SupabaseTables.eventPoints)
-        .select();
-        
-    // Fetch all columns from events table to avoid column not found errors
-    final eventsData = await SupabaseConfig.client
-        .from(SupabaseTables.events)
-        .select();
-        
-    // Create a map for quick event lookup
-    final eventMap = <String, String>{};
-    for (final event in eventsData) {
-      final id = event['id'] as String?;
-      if (id == null) continue;
-      
-      // Try both possible column names for event name
-      final name = event['name'] as String?;
-      final title = event['title'] as String?;
-      final eventName = name ?? title ?? 'Unknown Event';
-      
-      eventMap[id] = eventName;
-    }
+  final eventsStream = SupabaseConfig.client
+      .from(SupabaseTables.events)
+      .stream(primaryKey: ['id']);
 
-    // Group points by department and event
-    final departmentData = <String, Map<String, dynamic>>{};
-    final eventPointsPerBranch = <String, Map<String, Map<String, dynamic>>>{};
-    
-    // Initialize ALL departments with 0 points
-    for (final dept in allDepartments) {
-      departmentData[dept] = {
-        'totalPoints': 0,
-        'eventResults': <EventResult>[],
-      };
-      eventPointsPerBranch[dept] = {}; // To track points per event for each branch
-    }
+  final controller = StreamController<void>();
+  final sub1 = resultsStream.listen((_) => controller.add(null));
+  final sub2 = eventsStream.listen((_) => controller.add(null));
 
-    // Add points from event points table
-    for (final row in pointsData) {
-      final branch = (row['branch'] as String?)?.toUpperCase();
-      if (branch == null || !allDepartments.contains(branch)) continue;
-      
-      final eventId = (row['event_id'] as String?) ?? 'unknown';
-      final pointsVal = int.tryParse((row['points'] ?? 0).toString()) ?? 0;
-      final position = row['position'] as String?;
-      
-      // Get event name from our map
-      String eventName = eventMap[eventId] ?? 'Unknown Event';
+  ref.onDispose(() {
+    sub1.cancel();
+    sub2.cancel();
+    controller.close();
+  });
 
-      // Update total branch total points
-      departmentData[branch]!['totalPoints'] = (departmentData[branch]!['totalPoints'] as int) + pointsVal;
-      
-      // Group points by event for this branch
-      if (!eventPointsPerBranch[branch]!.containsKey(eventId)) {
-        // First time seeing this event for the branch
-        eventPointsPerBranch[branch]![eventId] = {
-          'eventId': eventId,
-          'eventName': eventName,
-          'position': position,
-          'totalEventPoints': 0,
+  // Seed initial pull
+  controller.add(null);
+
+  await for (final _ in controller.stream) {
+    try {
+      // Fetch published events
+      final eventsData = await SupabaseConfig.client
+          .from(SupabaseTables.events)
+          .select()
+          .eq('status', EventStatus.resultsPublished.value);
+
+      if (eventsData.isEmpty) {
+        // Return empty standings list initialized to 0 points
+        final emptyList = allDepartments.asMap().entries.map((entry) {
+          return DepartmentResult(
+            department: entry.value,
+            totalPoints: 0,
+            rank: entry.key + 1,
+            eventResults: [],
+          );
+        }).toList();
+        yield emptyList;
+        continue;
+      }
+
+      final publishedEventIds = eventsData.map((e) => e['id'] as String).toList();
+
+      // Create a map for quick event lookup
+      final eventMap = <String, String>{};
+      for (final event in eventsData) {
+        final id = event['id'] as String?;
+        if (id == null) continue;
+        final name = event['title'] ?? event['name'] ?? 'Unknown Event';
+        eventMap[id] = name;
+      }
+
+      // Fetch all results for these published events (including registrations and student_master)
+      final resultsData = await SupabaseConfig.client
+          .from(SupabaseTables.results)
+          .select('event_id, position, registrations!inner(student_master(branch))')
+          .inFilter('event_id', publishedEventIds);
+
+      final departmentData = <String, Map<String, dynamic>>{};
+      final eventPointsPerBranch = <String, Map<String, Map<String, dynamic>>>{};
+
+      // Initialize ALL departments with 0 points
+      for (final dept in allDepartments) {
+        departmentData[dept] = {
+          'totalPoints': 0,
+          'eventResults': <EventResult>[],
         };
+        eventPointsPerBranch[dept] = {};
       }
-      
-      // Add these points to this event's total (using non-null assertion)
-      final eventInfo = eventPointsPerBranch[branch]![eventId]!;
-      eventInfo['totalEventPoints'] = (eventInfo['totalEventPoints'] as int) + pointsVal;
-      
-      // Update position if we don't have one yet
-      if (eventInfo['position'] == null && position != null) {
-        eventInfo['position'] = position;
-      }
-    }
-    
-    // Now build eventResults from the grouped data
-    for (final branch in eventPointsPerBranch.keys) {
-      for (final eventId in eventPointsPerBranch[branch]!.keys) {
+
+      for (final row in resultsData as List) {
+        final reg = row['registrations'] as Map<String, dynamic>?;
+        final student = reg != null ? reg['student_master'] as Map<String, dynamic>? : null;
+        if (student == null) continue;
+
+        final rawBranch = student['branch'] as String?;
+        if (rawBranch == null) continue;
+
+        final branch = AppUtils.mapUsnBranchToOfficial(rawBranch);
+        if (!allDepartments.contains(branch)) continue;
+
+        final eventId = row['event_id'] as String;
+        final position = row['position'] as String?;
+        if (position == null) continue;
+
+        int pointsVal = 0;
+        if (position == 'winner') pointsVal = 10;
+        else if (position == 'runner_up') pointsVal = 7;
+        else if (position == 'second_runner_up') pointsVal = 5;
+        else if (position == 'participation') pointsVal = 1;
+
+        // Update total branch points
+        departmentData[branch]!['totalPoints'] = (departmentData[branch]!['totalPoints'] as int) + pointsVal;
+
+        // Group by event
+        if (!eventPointsPerBranch[branch]!.containsKey(eventId)) {
+          eventPointsPerBranch[branch]![eventId] = {
+            'eventId': eventId,
+            'eventName': eventMap[eventId] ?? 'Unknown Event',
+            'position': position,
+            'totalEventPoints': 0,
+          };
+        }
         final eventInfo = eventPointsPerBranch[branch]![eventId]!;
-        departmentData[branch]!['eventResults'].add(
-          EventResult(
-            eventId: eventId,
-            eventName: eventInfo['eventName'] as String,
-            position: eventInfo['position'] as String?,
-            points: eventInfo['totalEventPoints'] as int,
+        eventInfo['totalEventPoints'] = (eventInfo['totalEventPoints'] as int) + pointsVal;
+
+        // Keep winner/runner_up preference for display position
+        if (position == 'winner' || eventInfo['position'] == 'participation') {
+          eventInfo['position'] = position;
+        }
+      }
+
+      // Build eventResults lists
+      for (final branch in eventPointsPerBranch.keys) {
+        for (final eventId in eventPointsPerBranch[branch]!.keys) {
+          final eventInfo = eventPointsPerBranch[branch]![eventId]!;
+          departmentData[branch]!['eventResults'].add(
+            EventResult(
+              eventId: eventId,
+              eventName: eventInfo['eventName'] as String,
+              position: eventInfo['position'] as String?,
+              points: eventInfo['totalEventPoints'] as int,
+            ),
+          );
+        }
+      }
+
+      // Sort departments by total points descending
+      final sortedBranches = departmentData.entries.toList()
+        ..sort((a, b) => (b.value['totalPoints'] as int).compareTo(a.value['totalPoints'] as int));
+
+      // Convert to DepartmentResult
+      final resultList = <DepartmentResult>[];
+      int currentRank = 1;
+      for (int i = 0; i < sortedBranches.length; i++) {
+        final entry = sortedBranches[i];
+        final pts = entry.value['totalPoints'] as int;
+        if (i > 0 && pts < (sortedBranches[i - 1].value['totalPoints'] as int)) {
+          currentRank = i + 1;
+        }
+        resultList.add(
+          DepartmentResult(
+            department: entry.key,
+            totalPoints: pts,
+            rank: currentRank,
+            eventResults: entry.value['eventResults'] as List<EventResult>,
           ),
         );
       }
+
+      yield resultList;
+    } catch (e, stack) {
+      debugPrint('Error computing leaderboard: $e');
+      debugPrintStack(stackTrace: stack);
+      // Yield empty initialized list on error to prevent crash
+      final emptyList = allDepartments.asMap().entries.map((entry) {
+        return DepartmentResult(
+          department: entry.value,
+          totalPoints: 0,
+          rank: entry.key + 1,
+          eventResults: [],
+        );
+      }).toList();
+      yield emptyList;
     }
-
-    // Sort departments by total points
-    final sortedBranches = departmentData.entries.toList()
-      ..sort((a, b) => (b.value['totalPoints'] as int).compareTo(a.value['totalPoints'] as int));
-
-    // Convert to DepartmentResult objects
-    final resultList = <DepartmentResult>[];
-    for (int i = 0; i < sortedBranches.length; i++) {
-      final entry = sortedBranches[i];
-      resultList.add(
-        DepartmentResult(
-          department: entry.key,
-          totalPoints: entry.value['totalPoints'] as int,
-          rank: i + 1,
-          eventResults: entry.value['eventResults'] as List<EventResult>,
-        ),
-      );
-    }
-
-    yield resultList;
   }
+});
+
+final publishedEventsProvider = StreamProvider<List<Event>>((ref) {
+  return SupabaseConfig.client
+      .from(SupabaseTables.events)
+      .stream(primaryKey: ['id'])
+      .eq('status', EventStatus.resultsPublished.value)
+      .order('updated_at', ascending: false)
+      .map((data) => data.map((e) => Event.fromJson(e)).toList());
 });
 
 class LeaderboardScreen extends ConsumerWidget {
@@ -167,9 +235,9 @@ class LeaderboardScreen extends ConsumerWidget {
   String? _getUserBranch(Profile? profile) {
     if (profile == null || profile.usn == null) return null;
     final usn = profile.usn!.toUpperCase();
-    if (usn.contains('CS')) return 'CS';
-    if (usn.contains('IS')) return 'IS';
-    if (usn.contains('EC')) return 'EC';
+    if (usn.contains('CS')) return 'CSE';
+    if (usn.contains('IS')) return 'ISE';
+    if (usn.contains('EC')) return 'ECE';
     if (usn.contains('EE')) return 'EE';
     if (usn.contains('ME')) return 'ME';
     if (usn.contains('CV') || usn.contains('CE')) return 'CV';
@@ -188,103 +256,37 @@ class LeaderboardScreen extends ConsumerWidget {
     final userBranch = _getUserBranch(profile);
     final isJunior = _isJuniorWingOrLowerYear(profile);
 
-    return Scaffold(
-      backgroundColor: LitColors.void_,
-      appBar: LitLifeAppBar(
-        title: isJunior ? 'Club Members' : 'Leaderboard',
-        showBack: Navigator.canPop(context),
-      ),
-      body: isJunior
-          ? _buildClubMembersSection(context, ref)
-          : leaderboardAsync.when(
-
-        data: (departments) {
-          if (departments.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: () async => ref.invalidate(leaderboardProvider),
-              color: LitColors.ember,
-              backgroundColor: LitColors.clay,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-                  const EmptyView(
-                    icon: Icons.emoji_events_rounded,
-                    title: 'Leaderboard is empty',
-                    subtitle: 'Points will appear here once event results are published.',
+    return DefaultTabController(
+      length: isJunior ? 1 : 2,
+      child: Scaffold(
+        backgroundColor: LitColors.void_,
+        appBar: LitLifeAppBar(
+          title: isJunior ? 'Club Members' : 'Leaderboard',
+          showBack: Navigator.canPop(context),
+          bottom: isJunior
+              ? null
+              : TabBar(
+                  indicatorColor: LitColors.ember,
+                  labelColor: LitColors.bone,
+                  unselectedLabelColor: LitColors.ash,
+                  labelStyle: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13.5,
                   ),
+                  tabs: const [
+                    Tab(text: 'Overall Standings'),
+                    Tab(text: 'Published Events'),
+                  ],
+                ),
+        ),
+        body: isJunior
+            ? _buildClubMembersSection(context, ref)
+            : TabBarView(
+                children: [
+                  _buildOverallStandingsTab(context, ref, leaderboardAsync, userBranch),
+                  _buildPublishedEventsTab(context, ref),
                 ],
               ),
-            );
-          }
-
-          final maxPoints = departments.first.totalPoints;
-          final maxPointsVal = maxPoints > 0 ? maxPoints : 1;
-
-          final itemCount = 3 + departments.length; // header + legend + list + bottom
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(leaderboardProvider),
-            color: LitColors.ember,
-            backgroundColor: LitColors.clay,
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              itemCount: itemCount,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  // Header section
-                  return const Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          SizedBox(height: 12),
-                          Icon(
-                            Icons.emoji_events_rounded,
-                            size: 48,
-                            color: LitColors.ember,
-                          ),
-                          SizedBox(height: 8),
-                          _SarvottamTitle(),
-                          SizedBox(height: 4),
-                          _LiveStandingsText(),
-                        ],
-                      ),
-                    ),
-                  );
-                } else if (index == 1) {
-                  // Points System Legend Chips
-                  return const Padding(
-                    padding: EdgeInsets.only(bottom: 24),
-                    child: _LegendChips(),
-                  );
-                } else if (index == itemCount - 1) {
-                  // Bottom padding
-                  return const SizedBox(height: 130);
-                } else {
-                  // Department card
-                  final deptIndex = index - 2;
-                  final dept = departments[deptIndex];
-                  final isUserBranch = userBranch != null && dept.department.toUpperCase() == userBranch.toUpperCase();
-                  final ratio = dept.totalPoints / maxPointsVal;
-                  return RepaintBoundary(
-                    child: _DepartmentCard(
-                      dept: dept,
-                      isUserBranch: isUserBranch,
-                      ratio: ratio,
-                      userBranch: userBranch,
-                    ),
-                  );
-                }
-              },
-            ),
-          );
-        },
-        loading: () => const LoadingView(),
-        error: (err, _) => ErrorView(
-          message: 'Error loading leaderboard: $err',
-          onRetry: () => ref.invalidate(leaderboardProvider),
-        ),
       ),
     );
   }
@@ -397,12 +399,11 @@ class LeaderboardScreen extends ConsumerWidget {
                       Padding(
                         padding: const EdgeInsets.only(left: 4, bottom: 8),
                         child: Text(
-                          role.label.toUpperCase(),
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10.5,
+                          role.label,
+                          style: GoogleFonts.dancingScript(
+                            fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: LitColors.amber,
-                            letterSpacing: 1.0,
                           ),
                         ),
                       ),
@@ -479,11 +480,213 @@ class LeaderboardScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildOverallStandingsTab(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<DepartmentResult>> leaderboardAsync,
+    String? userBranch,
+  ) {
+    return leaderboardAsync.when(
+      data: (departments) {
+        if (departments.isEmpty) {
+          return RefreshIndicator(
+            onRefresh: () async => ref.invalidate(leaderboardProvider),
+            color: LitColors.ember,
+            backgroundColor: LitColors.clay,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                const EmptyView(
+                  icon: Icons.emoji_events_rounded,
+                  title: 'Leaderboard is empty',
+                  subtitle: 'Points will appear here once event results are published.',
+                ),
+              ],
+            ),
+          );
+        }
+
+        final maxPoints = departments.first.totalPoints;
+        final maxPointsVal = maxPoints > 0 ? maxPoints : 1;
+
+        final itemCount = 3 + departments.length; // header + legend + list + bottom
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(leaderboardProvider),
+          color: LitColors.ember,
+          backgroundColor: LitColors.clay,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            itemCount: itemCount,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                // Header section
+                return const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        SizedBox(height: 12),
+                        Icon(
+                          Icons.emoji_events_rounded,
+                          size: 48,
+                          color: LitColors.ember,
+                        ),
+                        SizedBox(height: 8),
+                        _SarvottamTitle(),
+                        SizedBox(height: 4),
+                        _LiveStandingsText(),
+                      ],
+                    ),
+                  ),
+                );
+              } else if (index == 1) {
+                // Points System Legend Chips
+                return const Padding(
+                  padding: EdgeInsets.only(bottom: 24),
+                  child: _LegendChips(),
+                );
+              } else if (index == itemCount - 1) {
+                // Bottom padding
+                return const SizedBox(height: 130);
+              } else {
+                // Department card
+                final deptIndex = index - 2;
+                final dept = departments[deptIndex];
+                final isUserBranch = userBranch != null && dept.department.toUpperCase() == userBranch.toUpperCase();
+                final ratio = dept.totalPoints / maxPointsVal;
+                return RepaintBoundary(
+                  child: _DepartmentCard(
+                    dept: dept,
+                    isUserBranch: isUserBranch,
+                    ratio: ratio,
+                    userBranch: userBranch,
+                  ),
+                );
+              }
+            },
+          ),
+        );
+      },
+      loading: () => const LoadingView(),
+      error: (err, _) => ErrorView(
+        message: 'Error loading leaderboard: $err',
+        onRetry: () => ref.invalidate(leaderboardProvider),
+      ),
+    );
+  }
+
+  Widget _buildPublishedEventsTab(BuildContext context, WidgetRef ref) {
+    final eventsAsync = ref.watch(publishedEventsProvider);
+    final r = Responsive(context);
+
+    return eventsAsync.when(
+      data: (events) {
+        if (events.isEmpty) {
+          return const EmptyView(
+            icon: Icons.emoji_events_outlined,
+            title: 'No published results',
+            subtitle: 'Published event results will appear here.',
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(publishedEventsProvider),
+          color: LitColors.ember,
+          backgroundColor: LitColors.clay,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            itemCount: events.length + 1,
+            itemBuilder: (context, index) {
+              if (index == events.length) {
+                return const SizedBox(height: 130);
+              }
+
+              final event = events[index];
+              return ClayCard(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: LitColors.clay2,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.emoji_events_rounded,
+                        color: LitColors.amber,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            event.name,
+                            style: GoogleFonts.fredoka(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14.5,
+                              color: LitColors.bone,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${event.category.label} • Published ${AppUtils.formatDate(event.updatedAt)}',
+                            style: GoogleFonts.plusJakartaSans(
+                              color: LitColors.ash,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ClayButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      borderRadius: 8,
+                      onPressed: () {
+                        showModalBottomSheet(
+                          context: context,
+                          useRootNavigator: true,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (ctx) => ResultsStandingsSheet(event: event),
+                        );
+                      },
+                      child: Text(
+                        'Rankings',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          color: LitColors.bone,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+      loading: () => const LoadingView(),
+      error: (e, _) => ErrorView(message: e.toString()),
+    );
+  }
+
   Widget _buildMottoCard() {
     return ClayCard(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      borderColor: LitColors.ember.withOpacity(0.2),
+      borderColor: LitColors.ember.withValues(alpha: 0.2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -509,7 +712,7 @@ class LeaderboardScreen extends ConsumerWidget {
               fontSize: 12.5,
               fontStyle: FontStyle.italic,
               height: 1.5,
-              color: LitColors.bone.withOpacity(0.9),
+              color: LitColors.bone.withValues(alpha: 0.9),
             ),
           ),
         ],

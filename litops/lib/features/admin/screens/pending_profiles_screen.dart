@@ -4,9 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/models.dart';
-import '../../../core/enums/enums.dart';
 import '../providers/admin_providers.dart';
-import '../../../core/utils/responsive.dart';
 
 class PendingProfilesScreen extends ConsumerWidget {
   const PendingProfilesScreen({super.key});
@@ -275,7 +273,10 @@ class PendingProfilesScreen extends ConsumerWidget {
                 Navigator.pop(context);
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF1A0D05),
+            ),
             child: const Text('Reject'),
           ),
         ],

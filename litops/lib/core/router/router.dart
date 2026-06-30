@@ -49,6 +49,7 @@ import '../../features/admin/screens/audit_dashboard_screen.dart';
 import '../../features/search/screens/global_search_screen.dart';
 import '../../features/scheduling/screens/event_scheduling_screen.dart';
 import '../../features/admin/screens/rulebook_management_screen.dart';
+import '../../features/admin/screens/auth_control_screen.dart';
 import '../../features/dashboard/screens/rulebook_viewer_screen.dart';
 import '../../core/enums/enums.dart';
 
@@ -347,37 +348,43 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           ),
 
           // Enterprise Extension Routes
+          GoRoute(
+            path: '/admin',
+            builder: (context, state) => const AdminDashboardScreen(),
+            routes: [
               GoRoute(
-                path: '/admin',
-                builder: (context, state) => const AdminDashboardScreen(),
+                path: 'auth-control',
+                builder: (context, state) => const AuthControlScreen(),
               ),
               GoRoute(
-                path: '/admin/pending',
+                path: 'pending',
                 builder: (context, state) => const PendingProfilesScreen(),
               ),
               GoRoute(
-                path: '/admin/members',
+                path: 'members',
                 builder: (context, state) => const MemberManagementScreen(),
               ),
-          GoRoute(
-            path: '/admin/points',
-            builder: (context, state) => const PointsManagementScreen(),
-          ),
-          GoRoute(
-            path: '/admin/yearly',
-            builder: (context, state) => const YearlyDatabaseScreen(),
-          ),
-          GoRoute(
-            path: '/admin/import',
-            builder: (context, state) => const HistoricalImportScreen(),
-          ),
-          GoRoute(
-            path: '/admin/audit',
-            builder: (context, state) => const AuditDashboardScreen(),
-          ),
-          GoRoute(
-            path: '/admin/rulebook',
-            builder: (context, state) => const RulebookManagementScreen(),
+              GoRoute(
+                path: 'points',
+                builder: (context, state) => const PointsManagementScreen(),
+              ),
+              GoRoute(
+                path: 'yearly',
+                builder: (context, state) => const YearlyDatabaseScreen(),
+              ),
+              GoRoute(
+                path: 'import',
+                builder: (context, state) => const HistoricalImportScreen(),
+              ),
+              GoRoute(
+                path: 'audit',
+                builder: (context, state) => const AuditDashboardScreen(),
+              ),
+              GoRoute(
+                path: 'rulebook',
+                builder: (context, state) => const RulebookManagementScreen(),
+              ),
+            ],
           ),
           GoRoute(
             path: '/rulebook/view',

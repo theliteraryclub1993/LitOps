@@ -9,6 +9,7 @@ import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/utils/app_utils.dart';
 
 final completedEventsProvider = StreamProvider<List<Event>>((ref) {
   return SupabaseConfig.client
@@ -29,12 +30,6 @@ final eventResultsProvider = StreamProvider.family<List<Map<String, dynamic>>, S
       .stream(primaryKey: ['id'])
       .eq('event_id', eventId)
       .map((data) {
-        // We need to fetch the related data for each result since stream doesn't support direct joins easily
-        // We'll use a Future to fetch the related data for each result
-        // So we need to create a stream that first fetches the related data
-        // Wait, let's use a separate approach! Let's use a FutureProvider that is invalidated by the stream!
-        // Or, let's create a new provider that combines the stream with the future to fetch related data!
-        // Okay, let's create a combined provider!
         return List<Map<String, dynamic>>.from(data);
       });
 });
@@ -133,7 +128,7 @@ class _AnimatedTrophyIconState extends State<_AnimatedTrophyIcon>
 }
 
 class _ResultsScreenState extends ConsumerState<ResultsScreen> {
-  bool _loadingStandings = false;
+  final bool _loadingStandings = false;
 
   void _showResultsStandingsSheet(Event event) {
     showModalBottomSheet(
@@ -142,7 +137,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return _ResultsStandingsSheet(event: event);
+        return ResultsStandingsSheet(event: event);
       },
     );
   }
@@ -178,17 +173,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                           padding: EdgeInsets.all(r.w(14)),
                           borderColor: isPublished ? LitColors.moss.withValues(alpha: 0.4) : null,
                           onTap: () {
-                            if (isPublished) {
-                              _showResultsStandingsSheet(e);
-                            } else {
-                              if (role.canManageResults) {
-                                context.push('/results/score/${e.id}');
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Results are not published yet for this event.')),
-                                );
-                              }
-                            }
+                            _showResultsStandingsSheet(e);
                           },
                           child: Row(
                             children: [
@@ -259,15 +244,21 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
   }
 }
 
-class _ResultsStandingsSheet extends ConsumerWidget {
+class ResultsStandingsSheet extends ConsumerWidget {
   final Event event;
 
-  const _ResultsStandingsSheet({required this.event});
+  const ResultsStandingsSheet({super.key, required this.event});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(currentUserRoleProvider);
     final resultsAsync = ref.watch(eventResultsWithDetailsProvider(event.id));
     final r = context.r;
+    final isPublished = event.status == EventStatus.resultsPublished;
+
+    // To get the user's branch for highlighting
+    final profile = ref.watch(currentProfileProvider);
+    final userBranch = _getUserBranch(profile);
 
     return ClayCard(
       color: LitColors.clay,
@@ -316,144 +307,263 @@ class _ResultsStandingsSheet extends ConsumerWidget {
               ),
             ],
           ),
+          SizedBox(height: r.h(12)),
+          // Show Last Updated Timestamp
+          Text(
+            'Last updated: ${AppUtils.formatDateTime(event.updatedAt)}',
+            style: GoogleFonts.plusJakartaSans(
+              color: LitColors.ash,
+              fontSize: r.sp(10.5),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
           SizedBox(height: r.h(20)),
           Flexible(
-            child: resultsAsync.when(
-              data: (results) {
-                if (results.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'No results found for this event.',
-                      style: GoogleFonts.plusJakartaSans(
-                        color: LitColors.ash,
-                        fontSize: r.sp(12),
+            child: !isPublished
+                ? Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: r.h(30)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.hourglass_empty_rounded,
+                            color: LitColors.ash,
+                            size: r.icon(48),
+                          ),
+                          SizedBox(height: r.h(16)),
+                          Text(
+                            'Results have not been published yet.',
+                            style: GoogleFonts.plusJakartaSans(
+                              color: LitColors.bone,
+                              fontSize: r.sp(14),
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: r.h(6)),
+                          Text(
+                            'The event rankings will appear here once official points are submitted.',
+                            style: GoogleFonts.plusJakartaSans(
+                              color: LitColors.ash,
+                              fontSize: r.sp(11.5),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                }
-                final sortedResults = List<Map<String, dynamic>>.from(results)..sort((a, b) {
-                  final posA = ResultPosition.fromString(a['position']);
-                  final posB = ResultPosition.fromString(b['position']);
-                  return posA.index.compareTo(posB.index);
-                });
-                return SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: sortedResults.map((res) {
-                      final pos = ResultPosition.fromString(res['position']);
-                      final isWinner = pos == ResultPosition.winner;
-                      final isRunnerUp = pos == ResultPosition.runnerUp;
-
-                      Color trophyColor = LitColors.ember;
-                      if (isRunnerUp) trophyColor = LitColors.amber;
-                      if (pos == ResultPosition.secondRunnerUp) trophyColor = LitColors.ash;
-
-                      final reg = res['registrations'] as Map<String, dynamic>?;
-                      final student = reg != null ? reg['student_master'] as Map<String, dynamic>? : null;
-                      final team = res['teams'] as Map<String, dynamic>?;
-                      final displayName = team != null ? team['team_name'] : (student != null ? student['name'] : 'Unknown');
-                      final subtitle = team != null ? 'Team Entry' : (student != null ? '${student['usn']} • ${student['branch']}' : '');
-
-                      return ClayCard(
-                        color: LitColors.clay2,
-                        margin: EdgeInsets.only(bottom: r.h(12)),
-                        padding: EdgeInsets.all(r.w(14)),
-                        borderColor: isWinner ? LitColors.ember.withValues(alpha: 0.3) : Colors.transparent,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.emoji_events_rounded,
-                              color: trophyColor,
-                              size: isWinner ? r.icon(36) : r.icon(28),
+                  )
+                : resultsAsync.when(
+                    data: (results) {
+                      final standings = AppUtils.calculateEventStandings(results);
+                      
+                      return SingleChildScrollView(
+                        child: ClayInsetCard(
+                          borderRadius: r.radius(12),
+                          padding: EdgeInsets.symmetric(vertical: r.h(12), horizontal: r.w(8)),
+                          child: Table(
+                            columnWidths: const {
+                              0: FlexColumnWidth(1.2), // Rank / Medal
+                              1: FlexColumnWidth(3),   // Department Name
+                              2: FlexColumnWidth(1.2), // Branch code
+                              3: FlexColumnWidth(1.2), // Points
+                            },
+                            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                            border: TableBorder.symmetric(
+                              inside: BorderSide(color: LitColors.ash.withValues(alpha: 0.1), width: 1),
                             ),
-                            SizedBox(width: r.w(14)),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TableRow(
+                                decoration: BoxDecoration(
+                                  color: LitColors.clay.withValues(alpha: 0.3),
+                                ),
                                 children: [
-                                  Text(
-                                    pos.label,
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: trophyColor,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: isWinner ? r.sp(12) : r.sp(11),
-                                      letterSpacing: 0.5,
-                                    ),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(vertical: r.h(8)),
+                                    child: _tableHeader('Rank', r),
                                   ),
-                                  SizedBox(height: r.h(2)),
-                                  Text(
-                                    displayName ?? 'Unknown',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: LitColors.bone,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: isWinner ? r.sp(15) : r.sp(13.5),
-                                    ),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(vertical: r.h(8)),
+                                    child: _tableHeader('Department', r),
                                   ),
-                                  if (subtitle.isNotEmpty) ...[
-                                    SizedBox(height: r.h(2)),
-                                    Text(
-                                      subtitle,
-                                      style: GoogleFonts.plusJakartaSans(
-                                        color: LitColors.ash,
-                                        fontSize: r.sp(10.5),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(vertical: r.h(8)),
+                                    child: _tableHeader('Code', r),
+                                  ),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(vertical: r.h(8)),
+                                    child: _tableHeader('Total', r),
+                                  ),
+                                ],
+                              ),
+                              ...standings.map((standing) {
+                                final branch = standing['branch'] as String;
+                                final name = standing['name'] as String;
+                                final points = standing['points'] as int;
+                                final rank = standing['rank'] as int;
+                                final isTie = standing['isTie'] as bool;
+                                
+                                final isMyBranch = userBranch != null && branch.toUpperCase() == userBranch.toUpperCase();
+                                
+                                return TableRow(
+                                  decoration: BoxDecoration(
+                                    color: isMyBranch ? LitColors.ember.withValues(alpha: 0.08) : null,
+                                  ),
+                                  children: [
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(vertical: r.h(10)),
+                                      child: Center(
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _getRankWidget(rank, r),
+                                            if (isTie)
+                                              Text(
+                                                '=',
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  color: LitColors.amber,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: r.sp(12),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(vertical: r.h(10), horizontal: r.w(6)),
+                                      child: Text(
+                                        name,
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: isMyBranch ? LitColors.ember : LitColors.bone,
+                                          fontWeight: isMyBranch ? FontWeight.bold : FontWeight.w500,
+                                          fontSize: r.sp(11.5),
+                                        ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(vertical: r.h(10)),
+                                      child: Center(
+                                        child: Text(
+                                          branch,
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: isMyBranch ? LitColors.ember : LitColors.ash,
+                                            fontWeight: isMyBranch ? FontWeight.bold : FontWeight.normal,
+                                            fontSize: r.sp(11),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(vertical: r.h(10)),
+                                      child: Center(
+                                        child: Text(
+                                          '$points',
+                                          style: GoogleFonts.jetBrainsMono(
+                                            color: points > 0 ? LitColors.moss : LitColors.ash,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: r.sp(12),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
-                                ],
-                              ),
-                            ),
-                            SizedBox(width: r.w(8)),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                  Text(
-                                    res['score'] != null ? '${res['score']} pts' : '--',
-                                    style: GoogleFonts.jetBrainsMono(
-                                      color: LitColors.bone,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: isWinner ? r.sp(14) : r.sp(12.5),
-                                    ),
-                                  ),
-                                  if (res['remarks'] != null && (res['remarks'] as String).isNotEmpty) ...[
-                                    SizedBox(height: r.h(2)),
-                                    Text(
-                                      res['remarks'],
-                                      style: GoogleFonts.plusJakartaSans(
-                                        color: LitColors.ash,
-                                        fontSize: r.sp(9),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
+                                );
+                              }),
                             ],
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  );
-                },
-                error: (e, _) => ErrorView(message: 'Error loading results: $e'),
-                loading: () => const LoadingView(),
-              ),
-            ),
-            SizedBox(height: r.h(16)),
+                        ),
+                      );
+                    },
+                    loading: () => const LoadingView(),
+                    error: (e, _) => ErrorView(message: e.toString()),
+                  ),
+          ),
+          SizedBox(height: r.h(16)),
+          // Manage Results / score entry for admins
+          if (role.canManageResults) ...[
             ClayButton(
               onPressed: () {
                 Navigator.pop(context);
-                context.push('/certificates');
+                context.push('/results/score/${event.id}');
               },
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.workspace_premium_rounded, size: r.icon(16)),
+                  Icon(Icons.edit_note_rounded, size: r.icon(18)),
                   SizedBox(width: r.w(8)),
-                  const Text('View Certificates'),
+                  Text(isPublished ? 'Edit Results' : 'Manage Results'),
                 ],
               ),
             ),
+            SizedBox(height: r.h(10)),
           ],
+          ClayButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.push('/certificates');
+            },
+            isGhost: role.canManageResults,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.workspace_premium_rounded, size: r.icon(16)),
+                SizedBox(width: r.w(8)),
+                const Text('View Certificates'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableHeader(String text, Responsive r) {
+    return Text(
+      text,
+      style: GoogleFonts.fredoka(
+        color: LitColors.bone,
+        fontSize: r.sp(11),
+        fontWeight: FontWeight.bold,
+      ),
+      textAlign: TextAlign.center,
+    );
+  }
+
+  Widget _getRankWidget(int rank, Responsive r) {
+    if (rank == 1) {
+      return Text('🥇', style: TextStyle(fontSize: r.sp(16)));
+    } else if (rank == 2) {
+      return Text('🥈', style: TextStyle(fontSize: r.sp(16)));
+    } else if (rank == 3) {
+      return Text('🥉', style: TextStyle(fontSize: r.sp(16)));
+    } else {
+      return Text(
+        '$rank',
+        style: GoogleFonts.jetBrainsMono(
+          color: LitColors.ash,
+          fontWeight: FontWeight.bold,
+          fontSize: r.sp(12),
         ),
       );
+    }
+  }
+
+  String? _getUserBranch(Profile? profile) {
+    if (profile == null || profile.usn == null) return null;
+    final usn = profile.usn!.toUpperCase();
+    if (usn.contains('CS')) return 'CSE';
+    if (usn.contains('IS')) return 'ISE';
+    if (usn.contains('EC')) return 'ECE';
+    if (usn.contains('EE')) return 'EE';
+    if (usn.contains('ME')) return 'ME';
+    if (usn.contains('CV') || usn.contains('CE')) return 'CV';
+    if (usn.contains('CI')) return 'CI';
+    if (usn.contains('CB')) return 'CB';
+    if (usn.contains('RI')) return 'RI';
+    if (usn.contains('VL')) return 'VL';
+    if (usn.contains('EI')) return 'EI';
+    return null;
   }
 }

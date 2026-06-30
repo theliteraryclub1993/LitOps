@@ -103,7 +103,7 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
                     borderRadius: 14,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: DropdownButtonFormField<Event>(
-                      value: _selectedEvent,
+                      initialValue: _selectedEvent,
                       dropdownColor: LitColors.clay,
                       decoration: const InputDecoration(border: InputBorder.none),
                       items: _events.map((e) => DropdownMenuItem(value: e, child: Text(e.name, style: GoogleFonts.plusJakartaSans(color: LitColors.bone, fontSize: 13)))).toList(),
@@ -170,7 +170,7 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
                                                 children: [
                                                   Text(
                                                     user.role.label,
-                                                    style: GoogleFonts.plusJakartaSans(color: LitColors.ash, fontSize: 11),
+                                                    style: GoogleFonts.dancingScript(color: LitColors.amber, fontSize: 14, fontWeight: FontWeight.bold),
                                                   ),
                                                   if (userAssignments.isNotEmpty) ...[
                                                     const SizedBox(width: 8),
@@ -205,7 +205,7 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
                                               child: Text(
                                                 userAssignments.isNotEmpty ? 'Unassign' : 'Assign',
                                                 style: GoogleFonts.plusJakartaSans(
-                                                  color: userAssignments.isNotEmpty ? LitColors.bone : LitColors.ember,
+                                                  color: userAssignments.isNotEmpty ? const Color(0xFF1A0D05) : LitColors.ember,
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 12,
                                                 ),

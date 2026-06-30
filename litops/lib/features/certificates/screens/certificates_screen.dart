@@ -309,7 +309,7 @@ class _CertificatesScreenState extends ConsumerState<CertificatesScreen> {
               borderRadius: r.radius(14),
               padding: EdgeInsets.symmetric(horizontal: r.w(12)),
               child: DropdownButtonFormField<Event>(
-                value: _selectedEvent,
+                initialValue: _selectedEvent,
                 dropdownColor: LitColors.clay,
                 hint: Text(
                   'Select Event',

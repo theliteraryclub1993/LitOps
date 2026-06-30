@@ -186,9 +186,9 @@ class ProfileScreen extends ConsumerWidget {
                       SizedBox(width: r.w(6)),
                       Text(
                         profile.role.label,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: GoogleFonts.dancingScript(
                           color: LitColors.amber,
-                          fontSize: r.sp(12),
+                          fontSize: r.sp(15),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -269,6 +269,7 @@ class ProfileScreen extends ConsumerWidget {
                     icon: Icons.workspace_premium_outlined,
                     title: 'Club Position',
                     value: profile.role.label,
+                    isCursive: true,
                   ),
                 ],
               ),
@@ -528,7 +529,7 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
-                        value: selectedYear,
+                        initialValue: selectedYear,
                         dropdownColor: const Color(0xFF1D1A18),
                         style: const TextStyle(color: Color(0xFFF3ECE2)),
                         decoration: const InputDecoration(
@@ -549,7 +550,7 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: selectedRole.value,
+                        initialValue: selectedRole.value,
                         dropdownColor: const Color(0xFF1D1A18),
                         style: const TextStyle(color: Color(0xFFF3ECE2)),
                         decoration: const InputDecoration(
@@ -752,6 +753,7 @@ class ProfileScreen extends ConsumerWidget {
     required IconData icon,
     required String title,
     required String value,
+    bool isCursive = false,
   }) {
     return Material(
       color: Colors.transparent,
@@ -774,11 +776,17 @@ class ProfileScreen extends ConsumerWidget {
         ),
         subtitle: Text(
           value,
-          style: GoogleFonts.plusJakartaSans(
-            color: LitColors.bone,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          style: isCursive
+              ? GoogleFonts.dancingScript(
+                  color: LitColors.amber,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                )
+              : GoogleFonts.plusJakartaSans(
+                  color: LitColors.bone,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
         ),
       ),
     );

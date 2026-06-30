@@ -387,7 +387,7 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
                     borderRadius: 14,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: DropdownButtonFormField<Event>(
-                      value: _selectedEvent,
+                      initialValue: _selectedEvent,
                       dropdownColor: LitColors.clay,
                       decoration: const InputDecoration(border: InputBorder.none),
                       items: _events

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
+import '../providers/auth_settings_provider.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/utils/responsive.dart';
 
@@ -44,6 +45,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       curve: const Interval(0.1, 0.8, curve: Curves.easeOutCubic),
     ));
     _animationController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(authSettingsProvider);
+    });
   }
 
   @override
@@ -84,7 +88,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
+    final authSettingsAsync = ref.watch(authSettingsProvider);
     final r = context.r;
+    final registrationClosed = authSettingsAsync.maybeWhen(
+      data: (settings) => !settings.registrationEnabled,
+      orElse: () => false,
+    );
 
     ref.listen<AuthState>(authStateProvider, (prev, next) {
       if (next.error != null && next.error != prev?.error) {
@@ -185,6 +194,42 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                       ),
                       SizedBox(height: r.h(32)),
 
+                      if (registrationClosed) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(r.w(14)),
+                          decoration: BoxDecoration(
+                            color: LitColors.coral.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(r.radius(14)),
+                            border: Border.all(
+                              color: LitColors.coral.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.person_off_outlined,
+                                color: LitColors.coral,
+                                size: r.icon(20),
+                              ),
+                              SizedBox(width: r.w(10)),
+                              Expanded(
+                                child: Text(
+                                  'New account registration is currently closed. Please contact the club admin.',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: LitColors.bone,
+                                    fontSize: r.sp(12),
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: r.h(20)),
+                      ],
+
                       // Email
                       ClayTextField(
                         controller: _emailController,
@@ -244,7 +289,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
 
                       // Register Button
                       ClayButton(
-                        onPressed: authState.isLoading ? null : _handleRegister,
+                        onPressed: authState.isLoading || registrationClosed
+                            ? null
+                            : _handleRegister,
                         child: authState.isLoading
                             ? SizedBox(
                                 height: r.w(18),
