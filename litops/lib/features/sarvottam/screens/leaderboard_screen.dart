@@ -11,6 +11,7 @@ import '../../../core/widgets/common_widgets.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/utils/app_utils.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/config/role_config.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../results/screens/results_screen.dart'; // To use ResultsStandingsSheet
@@ -252,9 +253,10 @@ class LeaderboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final leaderboardAsync = ref.watch(leaderboardProvider);
-    final profile = ref.watch(currentProfileProvider);
+    final roleConfig = ref.watch(roleConfigProvider);
+    final profile = roleConfig.profile;
     final userBranch = _getUserBranch(profile);
-    final isJunior = _isJuniorWingOrLowerYear(profile);
+    final isJunior = roleConfig.isJunior;
 
     return DefaultTabController(
       length: isJunior ? 1 : 2,
@@ -306,16 +308,7 @@ class LeaderboardScreen extends ConsumerWidget {
     );
   }
 
-  bool _isJuniorWingOrLowerYear(Profile? profile) {
-    if (profile == null) return false;
-    if (profile.role == UserRole.superAdmin) return false;
-    if (profile.year == 4 || profile.academicYear == 4) return false;
-    return profile.role == UserRole.juniorWing ||
-        profile.year == 1 ||
-        profile.year == 2 ||
-        profile.academicYear == 1 ||
-        profile.academicYear == 2;
-  }
+  // Centralized isJunior check is now handled via RoleConfig
 
   Widget _buildClubMembersSection(BuildContext context, WidgetRef ref) {
     final profilesAsync = ref.watch(activeProfilesStreamProvider);

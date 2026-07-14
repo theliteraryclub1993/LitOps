@@ -11,6 +11,7 @@ import '../../../core/widgets/common_widgets.dart';
 import '../../../core/utils/app_utils.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/config/role_config.dart';
 
 final eventsListProvider = StreamProvider<List<Event>>((ref) async* {
   print('📡 [Realtime] eventsListProvider stream starting');
@@ -210,7 +211,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
         loading: () => const LoadingView(),
         error: (err, _) => Center(child: Text('Error loading events: $err', style: GoogleFonts.plusJakartaSans(color: LitColors.coral))),
       ),
-      floatingActionButton: ref.watch(currentUserRoleProvider).canCreateEvents
+      floatingActionButton: ref.watch(roleConfigProvider).canCreateEvents
           ? Padding(
               padding: EdgeInsets.only(bottom: r.h(120), right: r.w(8)),
               child: ClayButton(

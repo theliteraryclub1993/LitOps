@@ -11,6 +11,7 @@ import '../../../core/enums/enums.dart';
 import '../../../core/models/models.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/config/role_config.dart';
 import 'package:intl/intl.dart';
 
 final _registrationsStream = StreamProvider((ref) => SupabaseConfig.client.from(SupabaseTables.registrations).stream(primaryKey: ['id']));
@@ -118,11 +119,12 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(currentProfileProvider);
+    final roleConfig = ref.watch(roleConfigProvider);
+    final profile = roleConfig.profile;
     final statsAsync = ref.watch(dashboardStatsProvider);
     
-    if (profile != null && !profile.role.isAdmin && profile.year != 3) {
-      return _buildNonAdminDashboard(context, profile, ref);
+    if (profile != null && !roleConfig.isCoreAdmin) {
+      return _buildNonAdminDashboard(context, roleConfig, ref);
     }
 
     return Scaffold(
@@ -166,18 +168,18 @@ class DashboardScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHeader(context, profile),
-                  if (profile?.role.isSuperAdmin == true) ...[
+                  if (roleConfig.showAdminConsole) ...[
                     SizedBox(height: context.r.h(16)),
                     _FadeIn(delay: 100, child: _buildAdminConsoleCard(context)),
                   ],
                   SizedBox(height: context.r.h(16)),
-                  _FadeIn(delay: 200, child: _buildBentoGrid(context, statsAsync, profile?.role.canViewAppeals == true && profile?.role.isSuperAdmin != true)),
+                  _FadeIn(delay: 200, child: _buildBentoGrid(context, statsAsync, roleConfig.canViewAppeals && !roleConfig.isSuperAdmin)),
                   SizedBox(height: context.r.h(24)),
                   _FadeIn(delay: 300, child: _buildSectionTitle(context, 'Quick Services')),
                   SizedBox(height: context.r.h(8)),
-                  _FadeIn(delay: 400, child: _buildServicesGrid(context, profile, ref)),
+                  _FadeIn(delay: 400, child: _buildServicesGrid(context, roleConfig, ref)),
                   SizedBox(height: context.r.h(24)),
-                  if (profile != null && _isJuniorWingOrLowerYear(profile)) ...[
+                  if (roleConfig.showRulebookCard) ...[
                     _FadeIn(delay: 500, child: _buildRulebookCard(context, ref.watch(rulebookStreamProvider))),
                   ] else ...[
                     _FadeIn(delay: 500, child: const LiveRankingsWidget()),
@@ -232,9 +234,11 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildNonAdminDashboard(BuildContext context, Profile profile, WidgetRef ref) {
+  Widget _buildNonAdminDashboard(BuildContext context, RoleConfig roleConfig, WidgetRef ref) {
+    final profile = roleConfig.profile!;
     final ongoingAsync = ref.watch(ongoingEventsProvider);
     final assignedAsync = ref.watch(myAssignedEventsProvider);
+    final statsAsync = ref.watch(dashboardStatsProvider);
     final r = context.r;
 
     return Scaffold(
@@ -272,6 +276,7 @@ class DashboardScreen extends ConsumerWidget {
               await ref.read(authStateProvider.notifier).refreshProfile();
               ref.invalidate(ongoingEventsProvider);
               ref.invalidate(myAssignedEventsProvider);
+              ref.invalidate(dashboardStatsProvider);
             },
             child: SingleChildScrollView(
               padding: r.pageInsets,
@@ -279,6 +284,17 @@ class DashboardScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHeader(context, profile),
+                  if (!roleConfig.isJunior) ...[
+                    SizedBox(height: r.h(16)),
+                    _FadeIn(
+                      delay: 150,
+                      child: _buildBentoGrid(
+                        context,
+                        statsAsync,
+                        roleConfig.canViewAppeals && !roleConfig.isSuperAdmin,
+                      ),
+                    ),
+                  ],
                   SizedBox(height: r.h(24)),
                   
                   _FadeIn(delay: 100, child: _buildSectionTitle(context, 'Ongoing Events')),
@@ -302,32 +318,34 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   SizedBox(height: r.h(24)),
 
-                  _FadeIn(delay: 300, child: _buildSectionTitle(context, 'My Assigned Events')),
-                  SizedBox(height: r.h(12)),
-                  assignedAsync.when(
-                    data: (events) {
-                      if (events.isEmpty) {
-                        return _buildEmptyState(context, 'You have no upcoming assignments.');
-                      }
-                      return Column(
-                        children: events.asMap().entries.map((entry) {
-                          return _FadeIn(
-                            delay: 350 + (entry.key * 50),
-                            child: _buildEventCard(context, entry.value, false),
-                          );
-                        }).toList(),
-                      );
-                    },
-                    loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
-                    error: (e, _) => Text('Error: $e', style: GoogleFonts.plusJakartaSans(color: LitColors.coral, fontSize: r.sp(13))),
-                  ),
-                  SizedBox(height: r.h(24)),
+                  if (roleConfig.showMyAssignedEvents) ...[
+                    _FadeIn(delay: 300, child: _buildSectionTitle(context, 'My Assigned Events')),
+                    SizedBox(height: r.h(12)),
+                    assignedAsync.when(
+                      data: (events) {
+                        if (events.isEmpty) {
+                          return _buildEmptyState(context, 'You have no upcoming assignments.');
+                        }
+                        return Column(
+                          children: events.asMap().entries.map((entry) {
+                            return _FadeIn(
+                              delay: 350 + (entry.key * 50),
+                              child: _buildEventCard(context, entry.value, false),
+                            );
+                          }).toList(),
+                        );
+                      },
+                      loading: () => const Center(child: CircularProgressIndicator(color: LitColors.ember)),
+                      error: (e, _) => Text('Error: $e', style: GoogleFonts.plusJakartaSans(color: LitColors.coral, fontSize: r.sp(13))),
+                    ),
+                    SizedBox(height: r.h(24)),
+                  ],
                   
                   _FadeIn(delay: 500, child: _buildSectionTitle(context, 'Quick Services')),
                   SizedBox(height: r.h(12)),
-                  _FadeIn(delay: 600, child: _buildNonAdminServicesGrid(context, profile, ref)),
+                  _FadeIn(delay: 600, child: _buildNonAdminServicesGrid(context, roleConfig, ref)),
                   SizedBox(height: r.h(24)),
-                  if (_isJuniorWingOrLowerYear(profile)) ...[
+                  if (roleConfig.showRulebookCard) ...[
                     _FadeIn(delay: 700, child: _buildRulebookCard(context, ref.watch(rulebookStreamProvider))),
                   ] else ...[
                     _FadeIn(delay: 700, child: const LiveRankingsWidget()),
@@ -471,21 +489,8 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildNonAdminServicesGrid(BuildContext context, Profile profile, WidgetRef ref) {
-    final role = ref.watch(currentUserRoleProvider);
-    final showAssignments = role.canAssignMembers || profile.year == 4;
-    final isJunior = _isJuniorWingOrLowerYear(profile);
-    final services = [
-      {'icon': Icons.qr_code_scanner_rounded, 'label': 'Scan QR', 'route': '/registration', 'color': LitColors.ember},
-      {'icon': Icons.calendar_today_rounded, 'label': 'Events', 'route': '/events', 'color': LitColors.amber},
-      {'icon': Icons.group_rounded, 'label': 'Students', 'route': '/students', 'color': LitColors.ash},
-      if (showAssignments)
-        {'icon': Icons.assignment_ind_rounded, 'label': 'Assign Crew', 'route': '/assignments', 'color': LitColors.amber},
-      if (!isJunior) ...[
-        {'icon': Icons.emoji_events_rounded, 'label': 'Results', 'route': '/results', 'color': LitColors.ember},
-        {'icon': Icons.analytics_rounded, 'label': 'Analytics', 'route': '/analytics', 'color': LitColors.amber},
-      ],
-    ];
+  Widget _buildNonAdminServicesGrid(BuildContext context, RoleConfig roleConfig, WidgetRef ref) {
+    final services = roleConfig.getQuickServices();
 
     final r = context.r;
     return GridView.builder(
@@ -541,16 +546,15 @@ class DashboardScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Namaskara, ${profile?.fullName.split(" ").first ?? "Member"}',
+                      'Welcome, ${profile?.fullName.split(" ").first ?? "Member"}',
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: r.sp(14),
-                        fontWeight: FontWeight.bold,
+                      style: GoogleFonts.satisfy(
+                        fontSize: r.sp(18),
                         color: LitColors.bone,
                       ),
                     ),
                     Text(
-                      'Day 2 · Apr 18',
+                      DateFormat('EEEE · MMM d').format(DateTime.now()),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: r.sp(10),
                         color: LitColors.ash,
@@ -685,21 +689,8 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildServicesGrid(BuildContext context, Profile? profile, WidgetRef ref) {
-    final role = ref.watch(currentUserRoleProvider);
-    final showAssignments = role.canAssignMembers || profile?.year == 4;
-    final isJunior = _isJuniorWingOrLowerYear(profile);
-    final services = [
-      {'icon': Icons.qr_code_scanner_rounded, 'label': 'Scan QR', 'route': '/registration', 'color': LitColors.ember},
-      {'icon': Icons.calendar_today_rounded, 'label': 'Events', 'route': '/events', 'color': LitColors.amber},
-      if (showAssignments)
-        {'icon': Icons.assignment_ind_rounded, 'label': 'Assign Crew', 'route': '/assignments', 'color': LitColors.amber},
-      {'icon': Icons.group_rounded, 'label': 'Students', 'route': '/students', 'color': LitColors.ash},
-      if (!isJunior) ...[
-        {'icon': Icons.emoji_events_rounded, 'label': 'Results', 'route': '/results', 'color': LitColors.ember},
-        {'icon': Icons.analytics_rounded, 'label': 'Analytics', 'route': '/analytics', 'color': LitColors.amber},
-      ],
-    ];
+  Widget _buildServicesGrid(BuildContext context, RoleConfig roleConfig, WidgetRef ref) {
+    final services = roleConfig.getQuickServices();
 
     final r = Responsive(context);
     return GridView.builder(
@@ -725,7 +716,16 @@ class DashboardScreen extends ConsumerWidget {
       padding: EdgeInsets.zero,
       onTap: () {
         final route = service['route'] as String;
-        const tabRoutes = ['/dashboard', '/events', '/registration', '/admin'];
+        const tabRoutes = [
+          '/dashboard', 
+          '/events', 
+          '/registration', 
+          '/admin', 
+          '/assignments', 
+          '/students', 
+          '/results', 
+          '/analytics'
+        ];
         if (tabRoutes.contains(route)) {
           context.go(route);
         } else {
@@ -841,16 +841,7 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  bool _isJuniorWingOrLowerYear(Profile? profile) {
-    if (profile == null) return false;
-    if (profile.role == UserRole.superAdmin) return false;
-    if (profile.year == 4 || profile.academicYear == 4) return false;
-    return profile.role == UserRole.juniorWing ||
-        profile.year == 1 ||
-        profile.year == 2 ||
-        profile.academicYear == 1 ||
-        profile.academicYear == 2;
-  }
+  // Centralized isJunior check is now handled via RoleConfig
 
 
 

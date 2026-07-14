@@ -10,8 +10,11 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/utils/app_utils.dart';
 import '../../../core/utils/responsive.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../models/student_models.dart';
+import '../../../core/config/role_config.dart';
+
 import '../providers/student_providers.dart';
+import '../../../core/models/models.dart';
+import '../../admin/providers/admin_providers.dart';
 
 class StudentDetailScreen extends ConsumerStatefulWidget {
   final String studentId;
@@ -55,7 +58,7 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
     super.dispose();
   }
 
-  void _initializeControllers(UnifiedStudent s) {
+  void _initializeControllers(Student s) {
     _nameCtrl.text = s.name;
     _usnCtrl.text = s.usn;
     _phoneCtrl.text = s.phone ?? '';
@@ -68,12 +71,11 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
     } else {
       _branch = AppUtils.mapUsnBranchToOfficial(s.branch);
     }
-    // Use the DB-stored year, not the dynamically inferred one.
     _year = s.year;
     _section = s.section ?? '';
   }
 
-  Future<void> _updateStudent(UnifiedStudent original) async {
+  Future<void> _updateStudent(Student original) async {
     setState(() => _isSaving = true);
     try {
       await SupabaseConfig.client.from(SupabaseTables.studentMaster).update({
@@ -87,8 +89,8 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', original.id);
 
-      // Invalidate providers
       ref.invalidate(studentMasterListProvider);
+      ref.invalidate(studentDetailsProvider(widget.studentId));
 
       if (mounted) {
         Navigator.pop(context); // Close dialog
@@ -107,16 +109,14 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
     }
   }
 
-  Future<void> _deleteStudent(UnifiedStudent s) async {
+  Future<void> _deleteStudent(Student s) async {
     setState(() => _isDeleting = true);
     try {
-      // Delete registration and student record (DB cascade should handle registrations)
       await SupabaseConfig.client
           .from(SupabaseTables.studentMaster)
           .delete()
           .eq('id', s.id);
 
-      // Invalidate stream providers
       ref.invalidate(studentMasterListProvider);
       ref.invalidate(registrationsListProvider);
 
@@ -137,7 +137,7 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
     }
   }
 
-  void _showEditDialog(UnifiedStudent s, Responsive r) {
+  void _showEditDialog(Student s, Responsive r) {
     _initializeControllers(s);
     showDialog(
       context: context,
@@ -221,7 +221,7 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
     );
   }
 
-  void _showDeleteConfirmation(UnifiedStudent s) {
+  void _showDeleteConfirmation(Student s) {
     ConfirmDialog.show(
       context,
       title: 'Delete Student Record',
@@ -234,15 +234,13 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final studentsAsync = ref.watch(unifiedStudentsProvider);
-    final userProfile = ref.watch(currentProfileProvider);
+    final studentAsync = ref.watch(studentDetailsProvider(widget.studentId));
+    final activeArchiveAsync = ref.watch(activeYearlyArchiveProvider);
+    final roleConfig = ref.watch(roleConfigProvider);
     final r = Responsive(context);
 
     // Check if the current user is an authorized admin (Super Admin, DB Manager, or President)
-    final bool isAuthorizedAdmin = userProfile != null &&
-        (userProfile.role.isSuperAdmin ||
-            userProfile.role == UserRole.databaseManager ||
-            userProfile.role == UserRole.studentPresident);
+    final bool isAuthorizedAdmin = roleConfig.canManageDatabase;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -253,21 +251,22 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
         title: const Text('Student Details', style: TextStyle(color: Color(0xFFF3ECE2), fontWeight: FontWeight.bold)),
         foregroundColor: const Color(0xFFF3ECE2),
       ),
-      body: studentsAsync.when(
-        data: (students) {
-          // Find the student by ID
-          final sList = students.where((student) => student.id == widget.studentId).toList();
-          if (sList.isEmpty) {
+      body: studentAsync.when(
+        data: (student) {
+          if (student == null) {
             return const Center(child: Text('Student record not found.', style: TextStyle(color: Color(0xFFFF5C5C))));
           }
-          final student = sList.first;
+
+          final activeArchive = activeArchiveAsync.value;
+          final currentFestYear = activeArchive?.festYear ?? 2026;
+          final currentAcadYear = '${currentFestYear - 1}-${currentFestYear.toString().substring(2)}';
 
           // Fetch event registrations
           final regsAsync = ref.watch(studentRegistrationsProvider(student.id));
 
           // Determine edit/delete permission
           // Historical data is read-only unless user is an authorized administrator
-          final bool isHistorical = student.dataSource == 'Previous Years';
+          final bool isHistorical = student.academicYear != currentAcadYear;
 
           return SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -292,8 +291,8 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
                         Expanded(
                           child: Text(
                             isAuthorizedAdmin
-                                ? 'Historical imported record from Malnad Fest ${student.festYear}. (Editable by Admin)'
-                                : 'Read-only historical student record from Malnad Fest ${student.festYear}.',
+                                ? 'Historical imported record for Academic Year ${student.academicYear}. (Editable by Admin)'
+                                : 'Read-only historical student record for Academic Year ${student.academicYear}.',
                             style: GoogleFonts.plusJakartaSans(color: const Color(0xFFFFB14D), fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -347,7 +346,7 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _buildStatusChip(student.isRegistered),
+                            _buildStatusChip(regsAsync.value?.isNotEmpty ?? false),
                           ],
                         ),
                       ),
@@ -384,9 +383,9 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
                       _buildDivider(),
                       _buildDetailRow('Study Year', 'Year ${student.year}'),
                       _buildDivider(),
-                      _buildDetailRow('Academic Year', student.academicYear),
+                      _buildDetailRow('Academic Year', student.academicYear ?? 'N/A'),
                       _buildDivider(),
-                      _buildDetailRow('Data Source', student.dataSource),
+                      _buildDetailRow('Data Source', isHistorical ? 'Historical' : 'Current Year'),
                       if (student.stream != null) ...[
                         _buildDivider(),
                         _buildDetailRow('Stream', student.stream!),
@@ -533,15 +532,17 @@ class _StudentDetailScreenState extends ConsumerState<StudentDetailScreen> {
         loading: () => const LoadingView(message: 'Loading student...'),
         error: (err, _) => ErrorView(
           message: 'Error loading student: $err',
-          onRetry: () => ref.invalidate(unifiedStudentsProvider),
+          onRetry: () => ref.invalidate(studentDetailsProvider(widget.studentId)),
         ),
       ),
-      bottomNavigationBar: studentsAsync.when(
-        data: (students) {
-          final sList = students.where((student) => student.id == widget.studentId).toList();
-          if (sList.isEmpty) return const SizedBox.shrink();
-          final student = sList.first;
-          final bool isHistorical = student.dataSource == 'Previous Years';
+      bottomNavigationBar: studentAsync.when(
+        data: (student) {
+          if (student == null) return const SizedBox.shrink();
+          
+          final activeArchive = activeArchiveAsync.value;
+          final currentFestYear = activeArchive?.festYear ?? 2026;
+          final currentAcadYear = '${currentFestYear - 1}-${currentFestYear.toString().substring(2)}';
+          final bool isHistorical = student.academicYear != currentAcadYear;
           final bool canEdit = !isHistorical || isAuthorizedAdmin;
 
           if (!canEdit && !isAuthorizedAdmin) return const SizedBox.shrink();

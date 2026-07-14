@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,11 +5,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:csv/csv.dart';
-import '../services/import_service.dart';
-import '../providers/admin_providers.dart';
+import '../../admin/services/import_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../students/providers/student_providers.dart';
+import '../../../core/utils/responsive.dart';
+import '../../../core/models/models.dart';
+import '../../../core/supabase/supabase_config.dart';
+import '../../../core/supabase/supabase_tables.dart';
 
 class HistoricalImportScreen extends ConsumerStatefulWidget {
   const HistoricalImportScreen({super.key});
@@ -20,84 +23,37 @@ class HistoricalImportScreen extends ConsumerStatefulWidget {
 }
 
 class _HistoricalImportScreenState extends ConsumerState<HistoricalImportScreen> {
-  final _yearCtrl = TextEditingController();
   final _importService = ImportService();
-
+  final _yearCtrl = TextEditingController();
+  
+  bool _isValidating = false;
   bool _isImporting = false;
-  bool _isPreviousYearMode = false;
   
   String? _loadedFileName;
   String? _loadedFileType;
   List<int>? _loadedBytes;
-  String? _loadedFilePath;
-
-  StreamedImportController? _importController;
-  ImportProgress? _importProgress;
-  ImportSummary? _importSummary;
-  String? _importError;
-
+  
+  ImportValidationResult? _validationResult;
+  String? _validationError;
+  
+  String? _activeBatchId;
+  int _processedCount = 0;
+  int _insertedCount = 0;
+  int _updatedCount = 0;
+  int _skippedCount = 0;
+  double _importPercent = 0.0;
+  
+  String _duplicateMode = 'skip'; // Default duplicate mode: skip
+  
   @override
   void dispose() {
     _yearCtrl.dispose();
-    _importController?.cancel();
     super.dispose();
   }
 
-  // Generate mock CSV data so the user can test the screen immediately
-  void _loadSampleData() {
-    const sampleCsv = 
-        'usn,name,branch,year,points\n'
-        '4MC23CS001,Abhishek Kumar,CS,3,10\n'
-        '4MC23CS042,Bhoomika R,CS,2,7\n'
-        '4MC23IS015,Darshan Gowda,IS,3,5\n'
-        '4MC23EC008,Deepika Sen,EC,4,0\n'
-        '4MC23ME099,Chethan M,ME,1,10\n'
-        '4MC23CS999,Invalid Branch Student,XYZ,2,0\n' // invalid branch
-        '4MC23CS001,Abhishek Kumar,CS,3,10'; // duplicate USN
-
-    setState(() {
-      _yearCtrl.text = '2026';
-      _loadedFileName = 'sample_student_archives.csv';
-      _loadedFileType = 'csv';
-      _loadedBytes = utf8.encode(sampleCsv);
-      _loadedFilePath = null;
-      _isPreviousYearMode = false;
-      _importSummary = null;
-      _importError = null;
-      _importProgress = null;
-    });
-
-    _startImport();
-  }
-
-  void _loadSamplePreviousYearData() {
-    const sampleCsv = 
-        'SL.NO,ACADEMIC YEAR,USN,STUDENT NAME,STREAM,DEPARTMENT,YEAR,EMAIL,GENDER\n'
-        '1,2024-25,4MC23CS001,Abhishek Kumar,BE,CS,2,abhishek@email.com,Male\n'
-        '2,2024-25,4MC23CS042,Bhoomika R,BE,CS,2,bhoomika@email.com,Female\n'
-        '3,2024-25,4MC23IS015,Darshan Gowda,BE,IS,2,darshan@email.com,Male\n'
-        '4,2024-25,4MC23EC008,Deepika Sen,BE,EC,2,deepika@email.com,Female\n'
-        '5,2023-24,4MC22ME099,Chethan M,BE,ME,3,chethan@email.com,Male\n'
-        '6,2024-25,4MC23CS999,Invalid Student,BE,XYZ,2,invalid@email.com,Male\n' // invalid branch
-        '7,2024-25,4MC23CS001,Duplicate Entry,BE,CS,2,dup@email.com,Male'; // duplicate USN
-
-    setState(() {
-      _yearCtrl.clear();
-      _loadedFileName = 'sample_previous_year_db.csv';
-      _loadedFileType = 'csv';
-      _loadedBytes = utf8.encode(sampleCsv);
-      _isPreviousYearMode = true;
-      _importSummary = null;
-      _importError = null;
-      _importProgress = null;
-    });
-
-    _startImport();
-  }
-
   // Load a file using file picker
-  Future<void> _pickFile({required bool previousYear}) async {
-    if (_isImporting) return;
+  Future<void> _pickFile() async {
+    if (_isImporting || _isValidating) return;
 
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -108,227 +64,610 @@ class _HistoricalImportScreenState extends ConsumerState<HistoricalImportScreen>
 
     PlatformFile file = result.files.first;
     final ext = file.extension?.toLowerCase();
-    if (ext != 'csv' && ext != 'xlsx' && ext != 'xls') {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unsupported file format. Please load a CSV or Excel file.')),
-        );
-      }
-      return;
-    }
-
+    
     try {
       List<int>? bytes = file.bytes;
       if (bytes == null && file.path != null) {
         bytes = await File(file.path!).readAsBytes();
       }
 
-      if (bytes == null && file.path == null) {
-        throw Exception('Could not read file bytes. The file might be empty or locked.');
+      if (bytes == null) {
+        throw Exception('Could not read file contents.');
       }
 
       setState(() {
-        _isPreviousYearMode = previousYear;
         _loadedFileName = file.name;
-        _loadedFileType = ext == 'csv' ? 'csv' : 'excel';
+        _loadedFileType = (ext == 'xlsx' || ext == 'xls') ? 'excel' : 'csv';
         _loadedBytes = bytes;
-        _loadedFilePath = file.path;
-        _importSummary = null;
-        _importError = null;
-        _importProgress = null;
+        _validationResult = null;
+        _validationError = null;
+        _yearCtrl.clear();
       });
-      
-      _startImport();
+
+      // Try to auto-detect academic year from filename
+      final nameMatch = RegExp(r'(\d{4})[-_](\d{2,4})').firstMatch(file.name);
+      if (nameMatch != null) {
+        final start = nameMatch.group(1)!;
+        var end = nameMatch.group(2)!;
+        if (end.length == 4) end = end.substring(2);
+        setState(() {
+          _yearCtrl.text = '$start-$end';
+        });
+      }
+
+      // Auto-run validation
+      _runValidation();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error reading file: $e')),
+          SnackBar(content: Text('Error loading file: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
-  // Start the background streamed import
-  void _startImport() {
-    if (_loadedBytes == null && _loadedFilePath == null) return;
+  // Execute Pre-Import Validation
+  Future<void> _runValidation() async {
+    if (_loadedBytes == null) return;
     
-    int expectedFestYear = 2026;
-    if (!_isPreviousYearMode) {
-      final y = int.tryParse(_yearCtrl.text);
-      if (y == null || y < 2020 || y > 2099) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter a valid expected fest year first.')),
-        );
-        return;
-      }
-      expectedFestYear = y;
+    setState(() {
+      _isValidating = true;
+      _validationResult = null;
+      _validationError = null;
+    });
+
+    try {
+      final report = await _importService.validateStudentFile(
+        bytes: _loadedBytes!,
+        fileType: _loadedFileType!,
+        fileName: _loadedFileName!,
+      );
+
+      setState(() {
+        _isValidating = false;
+        _validationResult = report;
+        if (report.detectedAcademicYear != null && _yearCtrl.text.isEmpty) {
+          _yearCtrl.text = report.detectedAcademicYear!;
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isValidating = false;
+        _validationError = e.toString();
+      });
+    }
+  }
+
+  // Create batch and run the import chunked task
+  Future<void> _startImport() async {
+    if (_validationResult == null || _validationResult!.validRecords.isEmpty) return;
+    
+    final acadYear = _yearCtrl.text.trim();
+    if (acadYear.isEmpty || !RegExp(r'^\d{4}-\d{2}$').hasMatch(acadYear)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid Academic Year format (e.g. 2026-27).'), backgroundColor: Colors.orange),
+      );
+      return;
     }
 
     final user = ref.read(currentProfileProvider);
-    final importedBy = user?.id ?? '';
+    final userId = user?.id ?? '';
 
     setState(() {
       _isImporting = true;
-      _importProgress = null;
-      _importSummary = null;
-      _importError = null;
+      _processedCount = 0;
+      _insertedCount = 0;
+      _updatedCount = 0;
+      _skippedCount = 0;
+      _importPercent = 0.0;
     });
 
-    // Mark bulk import as active to silence real-time DB listeners refetch
     ref.read(isImportingActiveProvider.notifier).state = true;
 
-    _importController = _importService.importStudentsStreamed(
-      filePath: _loadedFilePath,
-      bytes: _loadedBytes,
-      batchSize: 500,
-      isPreviousYear: _isPreviousYearMode,
-      expectedFestYear: expectedFestYear,
-      importedBy: importedBy,
-      fileName: _loadedFileName ?? 'unknown_file',
-      fileType: _loadedFileType ?? 'csv',
-      onProgress: (progress) {
-        if (mounted) {
-          setState(() {
-            _importProgress = progress;
-          });
-        }
-      },
-      onComplete: (summary) {
-        if (mounted) {
-          setState(() {
-            _isImporting = false;
-            _importSummary = summary;
-          });
-          
-          // Disable importing state and invalidate providers
-          ref.read(isImportingActiveProvider.notifier).state = false;
-          ref.invalidate(studentMasterListProvider);
-          ref.invalidate(yearlyImportsListProvider);
-          ref.invalidate(yearlyArchivesProvider);
-          ref.invalidate(departmentRankingsProvider);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Import completed successfully!')),
-          );
-        }
-      },
-      onError: (err) {
-        if (mounted) {
-          setState(() {
-            _isImporting = false;
-            _importError = err.toString();
-          });
-          
-          ref.read(isImportingActiveProvider.notifier).state = false;
-          ref.invalidate(studentMasterListProvider);
-          ref.invalidate(yearlyImportsListProvider);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Import failed: $err')),
-          );
-        }
-      },
-    );
-  }
+    try {
+      // 1. Create import batch row in Supabase
+      final batchId = await _importService.createImportBatch(
+        fileName: _loadedFileName!,
+        academicYear: acadYear,
+        duplicateMode: _duplicateMode,
+        totalRows: _validationResult!.validRecords.length,
+        uploadedBy: userId,
+      );
 
-  // Cancel the active import
-  void _cancelImport() {
-    if (_importController != null) {
-      _importController!.cancel();
       setState(() {
-        _isImporting = false;
-        _importError = 'Import was cancelled by the user.';
+        _activeBatchId = batchId;
       });
+
+      // 2. Execute chunked batch import
+      await _importService.executeImportJob(
+        batchId: batchId,
+        academicYear: acadYear,
+        duplicateMode: _duplicateMode,
+        records: _validationResult!.validRecords,
+        onBatchProgress: (processed, inserted, updated, skipped) {
+          if (mounted) {
+            setState(() {
+              _processedCount = processed;
+              _insertedCount = inserted;
+              _updatedCount = updated;
+              _skippedCount = skipped;
+              _importPercent = processed / _validationResult!.validRecords.length;
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Import job completed successfully!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import execution failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImporting = false;
+          _activeBatchId = null;
+        });
+      }
       ref.read(isImportingActiveProvider.notifier).state = false;
       ref.invalidate(studentMasterListProvider);
-      ref.invalidate(yearlyImportsListProvider);
+      ref.invalidate(distinctAcademicYearsProvider);
+      ref.invalidate(importBatchesListProvider);
     }
   }
 
-  // Export failed rows as CSV
-  Future<void> _exportFailedRows() async {
-    if (_importSummary == null || _importSummary!.failedRows.isEmpty) return;
+  // Safely delete past import history (and its loaded student records if unused)
+  Future<void> _deleteImportBatch(ImportBatch batch) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1D1A18),
+        title: Text('Delete Import Batch', style: GoogleFonts.fredoka(color: Colors.redAccent)),
+        content: Text('Are you sure you want to delete the import "${batch.fileName}"?\n\nThis will remove all students associated with this batch from the database.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
 
     try {
-      final List<List<dynamic>> csvData = [
-        ['Row Number', 'Failure Reason']
-      ];
-      for (final err in _importSummary!.failedRows) {
-        csvData.add([err['row'], err['reason']]);
+      // Check if any student from this batch is registered in any active events
+      final studentIdsResponse = await SupabaseConfig.client
+          .from(SupabaseTables.studentMaster)
+          .select('id')
+          .eq('import_batch_id', batch.id);
+
+      final List<String> studentIds = (studentIdsResponse as List).map((s) => s['id'] as String).toList();
+      
+      if (studentIds.isNotEmpty) {
+        final registeredCountResponse = await SupabaseConfig.client
+            .from(SupabaseTables.registrations)
+            .select('id')
+            .inFilter('student_id', studentIds)
+            .eq('is_cancelled', false)
+            .count(CountOption.exact);
+            
+        final activeRegistrations = registeredCountResponse.count;
+        if (activeRegistrations > 0) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: const Color(0xFF1D1A18),
+                title: const Text('Deletion Blocked', style: TextStyle(color: Colors.orange)),
+                content: Text('Cannot safely delete this batch. $activeRegistrations students in this import are already registered for events. Deleting them would corrupt active registrations.'),
+                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+              ),
+            );
+          }
+          return;
+        }
       }
 
-      final csvContent = const ListToCsvConverter().convert(csvData);
+      // Safe to delete: students will cascade-delete their empty/canceled rows
+      if (studentIds.isNotEmpty) {
+        await SupabaseConfig.client.from(SupabaseTables.studentMaster).delete().inFilter('id', studentIds);
+      }
+      await SupabaseConfig.client.from('import_batches').delete().eq('id', batch.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Import batch and its student records deleted successfully.'), backgroundColor: Colors.green),
+        );
+      }
+      ref.invalidate(importBatchesListProvider);
+      ref.invalidate(studentMasterListProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete batch: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // Export errors as a CSV file
+  Future<void> _exportErrorLog(ImportValidationResult result) async {
+    if (result.errors.isEmpty) return;
+    try {
+      final List<List<dynamic>> csvData = [
+        ['Row Number', 'Validation Failure Reason']
+      ];
+      for (int i = 0; i < result.errors.length; i++) {
+        csvData.add([i + 2, result.errors[i]]);
+      }
+      final csvContent = ListToCsvConverter().convert(csvData);
       
       final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/failed_rows.csv');
+      final file = File('${tempDir.path}/validation_errors_${DateTime.now().millisecondsSinceEpoch}.csv');
       await file.writeAsString(csvContent);
 
       await Share.shareXFiles(
         [XFile(file.path)],
-        text: 'LitOps - Failed Import Rows CSV',
-        subject: 'Failed CSV Import Rows',
+        text: 'Validation errors log',
+        subject: 'CSV Import Validation Errors Report',
       );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to export CSV: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export error: $e')));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_isImporting,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _isImporting) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Cannot navigate back while import is in progress.')),
-          );
-        }
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          title: const Text('Historical Fest Import'),
-          foregroundColor: const Color(0xFFF3ECE2),
-          elevation: 0,
+    final historyAsync = ref.watch(importBatchesListProvider);
+    final userProfile = ref.watch(currentProfileProvider);
+    final r = Responsive(context);
+
+    final bool isSuperAdmin = userProfile?.role.isSuperAdmin ?? false;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: Text(
+          'Student Database Import',
+          style: GoogleFonts.fredoka(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: r.sp(20)),
         ),
-        body: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_isImporting)
-                _buildProgressCard()
-              else if (_importSummary != null)
-                _buildSummaryCard()
-              else if (_importError != null)
-                _buildErrorCard()
-              else ...[
-                _buildControlsCard(),
-              ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Upload & Settings Config Panel
+            if (!_isImporting) ...[
+              _buildUploadPanel(r, isSuperAdmin),
+              const SizedBox(height: 16),
             ],
-          ),
+
+            // Active Import Progress Panel
+            if (_isImporting) ...[
+              _buildProgressPanel(r),
+              const SizedBox(height: 16),
+            ],
+
+            // Historical import batch logs
+            _buildHistoryTable(r, historyAsync),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildProgressCard() {
-    final double percent = _importProgress?.percent ?? 0.0;
-    final String statusMsg = _importProgress?.statusMessage ?? 'Preparing file...';
-    final int processed = _importProgress?.totalProcessed ?? 0;
-    final int success = _importProgress?.successCount ?? 0;
-    final int updated = _importProgress?.updatedCount ?? 0;
-    final int failed = _importProgress?.failedCount ?? 0;
+  Widget _buildUploadPanel(Responsive r, bool isSuperAdmin) {
+    final recordCount = _validationResult?.validRecords.length ?? 0;
+    final errorCount = _validationResult?.errors.length ?? 0;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: const Color(0xFF1D1A18),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF262220), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Row 1: File picker Area
+          Text(
+            'Select CSV Student Database',
+            style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: r.sp(14)),
+          ),
+          const SizedBox(height: 12),
+          
+          InkWell(
+            onTap: _pickFile,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF131110),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF262220), style: BorderStyle.solid),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    _loadedFileName != null ? Icons.insert_drive_file : Icons.cloud_upload_outlined, 
+                    color: Theme.of(context).primaryColor, 
+                    size: 36,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _loadedFileName ?? 'Drag & Drop CSV / Excel or Browse Files',
+                    style: GoogleFonts.plusJakartaSans(color: const Color(0xFF8C857C), fontSize: 13, fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (_loadedFileName != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Type: ${_loadedFileType?.toUpperCase()}',
+                      style: GoogleFonts.plusJakartaSans(color: const Color(0xFFFFB14D), fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Row 2: Target Academic Year & Duplicate Mode
+          if (_loadedBytes != null) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Target Academic Year',
+                        style: GoogleFonts.plusJakartaSans(color: const Color(0xFF8C857C), fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _yearCtrl,
+                        style: const TextStyle(color: Color(0xFFF3ECE2), fontSize: 13),
+                        decoration: const InputDecoration(
+                          hintText: 'e.g. 2026-27',
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Duplicate Policy Selector
+            Text(
+              'On Duplicate USN Detection',
+              style: GoogleFonts.plusJakartaSans(color: const Color(0xFF8C857C), fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Radio<String>(
+                  value: 'skip',
+                  groupValue: _duplicateMode,
+                  activeColor: Theme.of(context).primaryColor,
+                  onChanged: (val) {
+                    if (val != null) setState(() => _duplicateMode = val);
+                  },
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _duplicateMode = 'skip'),
+                    child: Text(
+                      'Skip (Keep original student record)',
+                      style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontSize: 12),
+                    ),
+                  ),
+                ),
+                Radio<String>(
+                  value: 'replace',
+                  groupValue: _duplicateMode,
+                  activeColor: Theme.of(context).primaryColor,
+                  onChanged: (val) {
+                    if (val != null) setState(() => _duplicateMode = val);
+                  },
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _duplicateMode = 'replace'),
+                    child: Text(
+                      'Replace (Overwrite database entry)',
+                      style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontSize: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Validate Button / Panel
+            if (_validationResult == null && !_isValidating && _validationError == null)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: isSuperAdmin ? _runValidation : null,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: const Color(0xFF1A0D05),
+                  ),
+                  icon: const Icon(Icons.analytics_outlined, size: 18),
+                  label: const Text('Validate CSV', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+
+            if (_isValidating)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      SizedBox(width: 12),
+                      Text('Reading and validating file rows...', style: TextStyle(color: Color(0xFF8C857C))),
+                    ],
+                  ),
+                ),
+              ),
+
+            if (_validationError != null) ...[
+              Text(
+                'Validation Error: ${_validationError!}',
+                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => setState(() {
+                  _validationError = null;
+                  _validationResult = null;
+                }),
+                child: const Text('Retry Validation'),
+              ),
+            ],
+
+            // Display Validation Summary Report
+            if (_validationResult != null) ...[
+              const Divider(color: Color(0xFF262220)),
+              const SizedBox(height: 12),
+              Text(
+                'Validation Summary Report:',
+                style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildStatLabel('Detected Year', _validationResult!.detectedAcademicYear ?? 'Not Found'),
+                  _buildStatLabel('Total Students', recordCount.toString()),
+                  _buildStatLabel('Departments', _validationResult!.departmentCount.toString()),
+                  _buildStatLabel('Duplicates in DB', _validationResult!.duplicateCount.toString()),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              if (errorCount > 0) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Found $errorCount Validation Errors',
+                            style: GoogleFonts.plusJakartaSans(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Do not partially import files with errors. Correct the issues in the CSV sheet first.',
+                        style: TextStyle(color: Color(0xFF8C857C), fontSize: 11),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () => _exportErrorLog(_validationResult!),
+                        style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.redAccent)),
+                        icon: const Icon(Icons.download, size: 14, color: Colors.redAccent),
+                        label: const Text('Download Errors Report', style: TextStyle(color: Colors.redAccent, fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                const Card(
+                  color: Color(0xFF131110),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle_outline, color: Colors.green, size: 20),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'All rows validated successfully. Ready for import.',
+                            style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            _validationResult = null;
+                            _loadedBytes = null;
+                            _loadedFileName = null;
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF262220))),
+                        child: const Text('Cancel', style: TextStyle(color: Color(0xFF8C857C))),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isSuperAdmin ? _startImport : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Import Database', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressPanel(Responsive r) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1A18),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFF262220), width: 1.2),
       ),
@@ -337,305 +676,196 @@ class _HistoricalImportScreenState extends ConsumerState<HistoricalImportScreen>
         children: [
           Row(
             children: [
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFFB14D)),
-              ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green)),
+              const SizedBox(width: 12),
               Text(
-                'Importing Student Database...',
-                style: GoogleFonts.plusJakartaSans(
-                  color: const Color(0xFFF3ECE2),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
+                'Import in Progress...',
+                style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: 15),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Text(
-            statusMsg,
-            style: GoogleFonts.plusJakartaSans(
-              color: const Color(0xFF8C857C),
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           LinearProgressIndicator(
-            value: percent,
-            backgroundColor: const Color(0xFF1A1715),
-            color: const Color(0xFFFFB14D),
-            minHeight: 10,
-            borderRadius: BorderRadius.circular(5),
+            value: _importPercent,
+            backgroundColor: const Color(0xFF131110),
+            color: Colors.green,
+            minHeight: 12,
+            borderRadius: BorderRadius.circular(6),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Progress:',
-                style: TextStyle(color: const Color(0xFF8C857C), fontSize: 12),
+                '$_processedCount of ${_validationResult?.validRecords.length ?? 0} students processed',
+                style: const TextStyle(color: Color(0xFF8C857C), fontSize: 12),
               ),
               Text(
-                '${(percent * 100).toStringAsFixed(0)}%',
-                style: const TextStyle(
-                  color: Color(0xFFFFB14D),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
+                '${(_importPercent * 100).toStringAsFixed(0)}%',
+                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           const Divider(color: Color(0xFF262220)),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildMiniMetric('Processed', processed.toString(), const Color(0xFFFFB14D)),
-              _buildMiniMetric('New (Success)', success.toString(), const Color(0xFF6FAE8F)),
-              _buildMiniMetric('Updated', updated.toString(), Colors.blue),
-              _buildMiniMetric('Failed', failed.toString(), const Color(0xFFFF5C5C)),
+              _buildMiniMetric('Inserted', _insertedCount.toString(), Colors.green),
+              _buildMiniMetric('Updated', _updatedCount.toString(), Colors.blue),
+              _buildMiniMetric('Skipped', _skippedCount.toString(), Colors.orange),
             ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _cancelImport,
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFFFF5C5C)),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              icon: const Icon(Icons.cancel_outlined, color: Color(0xFFFF5C5C), size: 18),
-              label: const Text(
-                'Cancel Import',
-                style: TextStyle(color: Color(0xFFFF5C5C), fontWeight: FontWeight.bold),
-              ),
-            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryCard() {
-    final sum = _importSummary!;
-    
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFF262220), width: 1.2),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.check_circle_outline, color: Color(0xFF6FAE8F), size: 24),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Import Completed',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFFF3ECE2),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildMiniMetric('Total Records', sum.totalRecords.toString(), const Color(0xFFFFB14D)),
-                  _buildMiniMetric('Imported (New)', sum.imported.toString(), const Color(0xFF6FAE8F)),
-                  _buildMiniMetric('Updated', sum.updated.toString(), Colors.blue),
-                  _buildMiniMetric('Duplicates', sum.duplicatesSkipped.toString(), Colors.orange),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildMiniMetric('Failed Rows', sum.failed.toString(), const Color(0xFFFF5C5C)),
-                  _buildMiniMetric('Time Taken', '${sum.timeTakenSeconds}s', const Color(0xFF8C857C)),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Divider(color: Color(0xFF262220)),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _importSummary = null;
-                          _loadedBytes = null;
-                          _loadedFilePath = null;
-                          _loadedFileName = null;
-                        });
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF262220),
-                        foregroundColor: const Color(0xFFF3ECE2),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text('Close'),
-                    ),
-                  ),
-                  if (sum.failedRows.isNotEmpty) ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _exportFailedRows,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6FAE8F),
-                          foregroundColor: const Color(0xFF0F1A14),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        icon: const Icon(Icons.share, size: 16),
-                        label: const Text('Export Failed'),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-        if (sum.failedRows.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF262220), width: 1.2),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Failed Rows Details:',
-                  style: TextStyle(
-                    color: Color(0xFFFF5C5C),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 250),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A0A0A),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF262220)),
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: sum.failedRows.length,
-                    itemBuilder: (context, index) {
-                      final item = sum.failedRows[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Row ${item['row']}: ',
-                              style: const TextStyle(
-                                color: Color(0xFFFFB14D),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                item['reason'] ?? 'Unknown error',
-                                style: const TextStyle(
-                                  color: Color(0xFF8C857C),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildErrorCard() {
+  Widget _buildHistoryTable(Responsive r, AsyncValue<List<ImportBatch>> historyAsync) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: const Color(0xFF1D1A18),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFF262220), width: 1.2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.error_outline, color: Color(0xFFFF5C5C), size: 24),
-              const SizedBox(width: 8),
-              Text(
-                'Import Interrupted',
-                style: GoogleFonts.plusJakartaSans(
-                  color: const Color(0xFFF3ECE2),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ],
+          Text(
+            'Import History',
+            style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: r.sp(14)),
           ),
           const SizedBox(height: 16),
-          Text(
-            _importError ?? 'An unexpected error occurred.',
-            style: GoogleFonts.plusJakartaSans(
-              color: const Color(0xFF8C857C),
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _importError = null;
-                  _loadedBytes = null;
-                  _loadedFilePath = null;
-                  _loadedFileName = null;
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF262220),
-                foregroundColor: const Color(0xFFF3ECE2),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: const Text('Back to Configurations'),
-            ),
+          historyAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Text('Error loading history: $err', style: const TextStyle(color: Colors.redAccent)),
+            data: (batches) {
+              if (batches.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24.0),
+                  child: Center(
+                    child: Text('No previous imports recorded.', style: TextStyle(color: Color(0xFF8C857C), fontSize: 12)),
+                  ),
+                );
+              }
+
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: batches.length,
+                separatorBuilder: (_, __) => const Divider(color: Color(0xFF262220)),
+                itemBuilder: (ctx, i) {
+                  final b = batches[i];
+                  final isFailed = b.status == 'failed';
+                  final isCompleted = b.status == 'completed';
+                  
+                  final dateStr = b.createdAt.toLocal().toString().substring(0, 16);
+
+                  return Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: Text(
+                        b.fileName,
+                        style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.w600, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        'Date: $dateStr • Year: ${b.academicYear}',
+                        style: GoogleFonts.plusJakartaSans(color: const Color(0xFF8C857C), fontSize: 11),
+                      ),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isFailed 
+                              ? Colors.redAccent.withValues(alpha: 0.1) 
+                              : isCompleted 
+                                  ? Colors.green.withValues(alpha: 0.1) 
+                                  : Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          b.status.toUpperCase(),
+                          style: TextStyle(
+                            color: isFailed 
+                                ? Colors.redAccent 
+                                : isCompleted 
+                                    ? Colors.green 
+                                    : Colors.orange,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _buildStatLabel('Mode', b.duplicateMode.toUpperCase()),
+                                  _buildStatLabel('Total Rows', b.totalRows.toString()),
+                                  _buildStatLabel('Inserted', b.insertedCount.toString()),
+                                  _buildStatLabel('Updated', b.updatedCount.toString()),
+                                  _buildStatLabel('Skipped', b.skippedCount.toString()),
+                                ],
+                              ),
+                              if (b.errorLog != null && b.errorLog!.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF131110),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    b.errorLog!,
+                                    style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  // Delete Import Job
+                                  OutlinedButton.icon(
+                                    onPressed: () => _deleteImportBatch(b),
+                                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.redAccent)),
+                                    icon: const Icon(Icons.delete_outline, size: 14, color: Colors.redAccent),
+                                    label: const Text('Delete Import', style: TextStyle(color: Colors.redAccent, fontSize: 11)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatLabel(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Color(0xFF8C857C), fontSize: 10)),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(color: Color(0xFFF3ECE2), fontSize: 12, fontWeight: FontWeight.bold)),
+      ],
     );
   }
 
@@ -656,178 +886,6 @@ class _HistoricalImportScreenState extends ConsumerState<HistoricalImportScreen>
           style: const TextStyle(color: Color(0xFF8C857C), fontSize: 10),
         ),
       ],
-    );
-  }
-
-  Widget _buildControlsCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262220), width: 1.2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Import Configurations',
-            style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 16),
-
-          // --- SECTION 1: ACTIVE FEST YEAR IMPORT ---
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF131110),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF1F1B1A)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.workspace_premium_outlined, color: Theme.of(context).colorScheme.primary, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Option A: Active Year Import (Assigns Points)',
-                      style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Expected Fest Year',
-                  style: GoogleFonts.plusJakartaSans(color: const Color(0xFF8C857C), fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _yearCtrl,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Color(0xFFF3ECE2), fontSize: 13),
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. 2026',
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _pickFile(previousYear: false),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: const Color(0xFF1A0D05),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                    icon: const Icon(Icons.upload_file, size: 16),
-                    label: const Text('Select Active Year File', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // --- SECTION 2: PREVIOUS YEAR STUDENT DATABASE IMPORT ---
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF131110),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF1F1B1A)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.history_toggle_off_outlined, color: Color(0xFF6FAE8F), size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Option B: Previous Year Student DB Import',
-                      style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Supports academic year, USN, stream, department, study year, email, and gender. Fest year is resolved automatically from the sheet columns.',
-                  style: GoogleFonts.plusJakartaSans(color: const Color(0xFF8C857C), fontSize: 11),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _pickFile(previousYear: true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6FAE8F),
-                      foregroundColor: const Color(0xFF0F1A14),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                    icon: const Icon(Icons.drive_folder_upload, size: 16),
-                    label: const Text('Upload Previous Year DB (Excel/CSV)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-          if (_loadedFileName != null)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF262220),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF312B27)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.insert_drive_file, color: _isPreviousYearMode ? const Color(0xFF6FAE8F) : const Color(0xFFFFB14D), size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '$_loadedFileName (${_isPreviousYearMode ? "Previous Year DB" : "Active Year"})',
-                      style: const TextStyle(color: Color(0xFFF3ECE2), fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 12),
-
-          // Quick sample generators
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Quick sample tests:',
-                style: TextStyle(color: const Color(0xFF8C857C), fontSize: 11),
-              ),
-              Row(
-                children: [
-                  TextButton.icon(
-                    onPressed: _loadSampleData,
-                    icon: const Icon(Icons.flash_on, color: Color(0xFFFFB14D), size: 14),
-                    label: const Text('Active Year', style: TextStyle(color: Color(0xFFFFB14D), fontSize: 11)),
-                  ),
-                  TextButton.icon(
-                    onPressed: _loadSamplePreviousYearData,
-                    icon: const Icon(Icons.history, color: Color(0xFF6FAE8F), size: 14),
-                    label: const Text('Prev Year DB', style: TextStyle(color: Color(0xFF6FAE8F), fontSize: 11)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

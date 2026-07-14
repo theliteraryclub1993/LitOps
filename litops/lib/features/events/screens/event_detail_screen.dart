@@ -6,6 +6,7 @@ import '../../../core/models/models.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/config/role_config.dart';
 
 
 import '../../../core/supabase/supabase_config.dart';
@@ -175,10 +176,8 @@ class EventDetailScreen extends ConsumerWidget {
     final eventAsync = ref.watch(eventDetailProvider(eventId));
     final regCountAsync = ref.watch(eventRegistrationsCountProvider(eventId));
     final attCountAsync = ref.watch(eventAttendanceCountProvider(eventId));
-    final role = ref.watch(currentUserRoleProvider);
-    final profile = ref.watch(currentProfileProvider);
-    final year = profile?.year;
-    final isAllowedToRegister = role.canRegisterParticipants || (year != null && year >= 1 && year <=4);
+    final roleConfig = ref.watch(roleConfigProvider);
+    final isAllowedToRegister = roleConfig.canRegisterParticipants || (roleConfig.year >= 1 && roleConfig.year <= 4);
 
     return Scaffold(
       backgroundColor: LitColors.void_,
@@ -203,7 +202,7 @@ class EventDetailScreen extends ConsumerWidget {
               ref.invalidate(eventAttendanceCountProvider(eventId));
             },
           ),
-          if (role.canManageEvents || profile?.year == 4)
+          if (roleConfig.canManageEvents)
             PopupMenuButton<String>(
               color: LitColors.clay,
               elevation: 8,
@@ -268,7 +267,7 @@ class EventDetailScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (role.canAssignMembers || profile?.year == 4)
+                if (roleConfig.canAssignMembers)
                   PopupMenuItem(
                     value: 'assign',
                     child: Row(
@@ -279,7 +278,7 @@ class EventDetailScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                if (role.canCreateEvents)
+                if (roleConfig.canCreateEvents)
                   PopupMenuItem(
                     value: 'edit',
                     child: Row(
@@ -310,7 +309,7 @@ class EventDetailScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (role.isAdmin)
+                if (roleConfig.isAdmin)
                   PopupMenuItem(
                     value: 'delete',
                     child: Row(
@@ -353,7 +352,7 @@ class EventDetailScreen extends ConsumerWidget {
                         children: [
                           CategoryChip(category: event.category.value),
                           SizedBox(width: context.r.w(8)),
-                          if (role.canManageEvents || profile?.year == 4)
+                          if (roleConfig.canManageEvents)
                             Flexible(
                               child: GestureDetector(
                                 onTap: () async {

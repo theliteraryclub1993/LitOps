@@ -213,6 +213,10 @@ class Student {
   final StudentStatus status;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? academicYear;
+  final int? semester;
+  final String source;
+  final String? importBatchId;
 
   const Student({
     required this.id,
@@ -229,6 +233,10 @@ class Student {
     this.status = StudentStatus.active,
     required this.createdAt,
     required this.updatedAt,
+    this.academicYear,
+    this.semester,
+    this.source = 'fest_registration',
+    this.importBatchId,
   });
 
   factory Student.fromJson(Map<String, dynamic> json) {
@@ -247,6 +255,10 @@ class Student {
       status: StudentStatus.fromString(json['status'] as String? ?? 'active'),
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      academicYear: json['academic_year'] as String?,
+      semester: json['semester'] as int?,
+      source: json['source'] as String? ?? 'fest_registration',
+      importBatchId: json['import_batch_id'] as String?,
     );
   }
 
@@ -263,6 +275,10 @@ class Student {
       'stream': stream,
       'photo_url': photoUrl,
       'status': status.value,
+      'academic_year': academicYear,
+      'semester': semester,
+      'source': source,
+      'import_batch_id': importBatchId,
     };
   }
 
@@ -278,6 +294,10 @@ class Student {
     String? stream,
     String? photoUrl,
     StudentStatus? status,
+    String? academicYear,
+    int? semester,
+    String? source,
+    String? importBatchId,
   }) {
     return Student(
       id: id,
@@ -294,7 +314,83 @@ class Student {
       status: status ?? this.status,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
+      academicYear: academicYear ?? this.academicYear,
+      semester: semester ?? this.semester,
+      source: source ?? this.source,
+      importBatchId: importBatchId ?? this.importBatchId,
     );
+  }
+}
+
+class ImportBatch {
+  final String id;
+  final String fileName;
+  final String academicYear;
+  final String? uploadedBy;
+  final String duplicateMode; // 'replace' | 'skip'
+  final String status; // 'pending' | 'processing' | 'completed' | 'failed'
+  final int totalRows;
+  final int processedRows;
+  final int insertedCount;
+  final int updatedCount;
+  final int skippedCount;
+  final String? errorLog;
+  final DateTime createdAt;
+  final DateTime? completedAt;
+
+  const ImportBatch({
+    required this.id,
+    required this.fileName,
+    required this.academicYear,
+    this.uploadedBy,
+    required this.duplicateMode,
+    required this.status,
+    this.totalRows = 0,
+    this.processedRows = 0,
+    this.insertedCount = 0,
+    this.updatedCount = 0,
+    this.skippedCount = 0,
+    this.errorLog,
+    required this.createdAt,
+    this.completedAt,
+  });
+
+  factory ImportBatch.fromJson(Map<String, dynamic> json) {
+    return ImportBatch(
+      id: json['id'] as String,
+      fileName: json['file_name'] as String,
+      academicYear: json['academic_year'] as String,
+      uploadedBy: json['uploaded_by'] as String?,
+      duplicateMode: json['duplicate_mode'] as String,
+      status: json['status'] as String,
+      totalRows: json['total_rows'] as int? ?? 0,
+      processedRows: json['processed_rows'] as int? ?? 0,
+      insertedCount: json['inserted_count'] as int? ?? 0,
+      updatedCount: json['updated_count'] as int? ?? 0,
+      skippedCount: json['skipped_count'] as int? ?? 0,
+      errorLog: json['error_log'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      completedAt: json['completed_at'] != null ? DateTime.parse(json['completed_at'] as String) : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'file_name': fileName,
+      'academic_year': academicYear,
+      'uploaded_by': uploadedBy,
+      'duplicate_mode': duplicateMode,
+      'status': status,
+      'total_rows': totalRows,
+      'processed_rows': processedRows,
+      'inserted_count': insertedCount,
+      'updated_count': updatedCount,
+      'skipped_count': skippedCount,
+      'error_log': errorLog,
+      'created_at': createdAt.toIso8601String(),
+      'completed_at': completedAt?.toIso8601String(),
+    };
   }
 }
 

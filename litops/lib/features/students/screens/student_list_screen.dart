@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/utils/responsive.dart';
-import '../../../core/utils/app_utils.dart';
-import '../models/student_models.dart';
 import '../providers/student_providers.dart';
 import '../../admin/providers/admin_providers.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../../core/models/models.dart';
+import '../../../core/config/role_config.dart';
 
 class StudentListScreen extends ConsumerStatefulWidget {
   const StudentListScreen({super.key});
@@ -18,23 +19,24 @@ class StudentListScreen extends ConsumerStatefulWidget {
 
 class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   final _searchCtrl = TextEditingController();
-  String _searchQuery = '';
-  
-  // Filter States
   bool _isFilterExpanded = false;
-  String _selectedAcademicYear = 'All';
-  String _selectedDepartment = 'All';
-  String _selectedYear = 'All';
-  String _selectedStatus = 'All';
-  String _selectedSource = 'All Students';
 
   final List<String> _departments = [
-    'All', 'CSE', 'ISE', 'CI', 'CB', 'RI', 'ECE', 'VL', 'EI', 'EE', 'CV', 'ME'
+    'All',
+    'CSE',
+    'ISE',
+    'CI',
+    'CB',
+    'RI',
+    'ECE',
+    'VL',
+    'EI',
+    'EE',
+    'CV',
+    'ME'
   ];
-  
+
   final List<String> _years = ['All', '1', '2', '3', '4'];
-  final List<String> _statuses = ['All', 'Registered', 'Not Registered'];
-  final List<String> _sources = ['All Students', 'Current Year', 'Previous Years'];
 
   @override
   void dispose() {
@@ -43,283 +45,36 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   }
 
   void _resetFilters() {
-    setState(() {
-      _selectedAcademicYear = 'All';
-      _selectedDepartment = 'All';
-      _selectedYear = 'All';
-      _selectedStatus = 'All';
-      _selectedSource = 'All Students';
-      _searchQuery = '';
-      _searchCtrl.clear();
-    });
+    _searchCtrl.clear();
+    ref.read(studentFilterProvider.notifier).reset();
   }
 
-  int _getActiveFilterCount() {
+  int _getActiveFilterCount(StudentFilterState filters) {
     int count = 0;
-    if (_selectedAcademicYear != 'All') count++;
-    if (_selectedDepartment != 'All') count++;
-    if (_selectedYear != 'All') count++;
-    if (_selectedStatus != 'All') count++;
-    if (_selectedSource != 'All Students' && _selectedSource != 'All') count++;
-    if (_searchQuery.isNotEmpty) count++;
+    if (filters.academicYear != 'All') count++;
+    if (filters.department != 'All') count++;
+    if (filters.year != 'All') count++;
+    if (filters.section != 'All') count++;
+    if (filters.searchQuery.isNotEmpty) count++;
     return count;
-  }
-
-  void _showYearwiseParticipationDialog(BuildContext context, List<UnifiedStudent> allStudents) {
-    // Apply academic year, department, and source filters to get the cohort
-    final cohort = allStudents.where((student) {
-      // Academic Year Filter
-      if (_selectedAcademicYear != 'All') {
-        final studentAcadYear = student.academicYear.replaceAll('–', '-').replaceAll('—', '-').trim();
-        final selectedAcadYear = _selectedAcademicYear.replaceAll('–', '-').replaceAll('—', '-').trim();
-        if (studentAcadYear != selectedAcadYear) {
-          return false;
-        }
-      }
-
-      // Department Filter
-      if (_selectedDepartment != 'All') {
-        final studentBranchOfficial = AppUtils.mapUsnBranchToOfficial(student.branch);
-        final selectedDeptOfficial = AppUtils.mapUsnBranchToOfficial(_selectedDepartment);
-        if (studentBranchOfficial.toUpperCase() != selectedDeptOfficial.toUpperCase()) {
-          return false;
-        }
-      }
-
-      // Source Filter
-      if (_selectedSource != 'All Students' && _selectedSource != 'All') {
-        final isCurrent = _selectedSource == 'Current Year';
-        final studentIsCurrent = student.dataSource == 'Current Year';
-        if (studentIsCurrent != isCurrent) return false;
-      }
-
-      return true;
-    }).toList();
-
-    final totalCohort = cohort.length;
-    final registeredCohort = cohort.where((s) => s.isRegistered).length;
-    final overallPercentage = totalCohort > 0 ? (registeredCohort / totalCohort * 100).toStringAsFixed(1) : '0.0';
-
-    final Map<int, int> regByYear = {1: 0, 2: 0, 3: 0, 4: 0};
-    final Map<int, int> totalByYear = {1: 0, 2: 0, 3: 0, 4: 0};
-
-    for (final s in cohort) {
-      if (s.year >= 1 && s.year <= 4) {
-        totalByYear[s.year] = (totalByYear[s.year] ?? 0) + 1;
-        if (s.isRegistered) {
-          regByYear[s.year] = (regByYear[s.year] ?? 0) + 1;
-        }
-      }
-    }
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        final r = Responsive(ctx);
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1D1A18),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: const BorderSide(color: Color(0xFF262220), width: 1.2),
-          ),
-          title: Text(
-            'Participation Stats',
-            style: GoogleFonts.fredoka(
-              fontWeight: FontWeight.bold,
-              color: const Color(0xFFF3ECE2),
-              fontSize: r.sp(18),
-            ),
-          ),
-          content: SizedBox(
-            width: r.screenWidth > 500 ? 420 : double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Active Filters Badge
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF131110),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF262220)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Active Filters Context',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: const Color(0xFF8C857C),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Dept: $_selectedDepartment  •  Year: $_selectedAcademicYear  •  Source: $_selectedSource',
-                          style: GoogleFonts.plusJakartaSans(
-                            color: const Color(0xFFF3ECE2),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Overall Stats Row
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF6FAE8F).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF6FAE8F).withValues(alpha: 0.2)),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              '$overallPercentage%',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: const Color(0xFF6FAE8F),
-                                fontWeight: FontWeight.w800,
-                                fontSize: r.sp(20),
-                              ),
-                            ),
-                            Text(
-                              'Overall Participation',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: const Color(0xFF8C857C),
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$registeredCohort Registered',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: const Color(0xFFF3ECE2),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Out of $totalCohort total students matching selection',
-                              style: GoogleFonts.plusJakartaSans(
-                                color: const Color(0xFF8C857C),
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  Text(
-                    'Year-wise Breakdown',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFFF3ECE2),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Years 1-4 List
-                  ...[1, 2, 3, 4].map((yearNum) {
-                    final yrReg = regByYear[yearNum] ?? 0;
-                    final yrTot = totalByYear[yearNum] ?? 0;
-                    final double yrPct = yrTot > 0 ? (yrReg / yrTot) : 0.0;
-                    
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Year $yearNum Students',
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: const Color(0xFFF3ECE2),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              Text(
-                                '$yrReg / $yrTot participated (${(yrPct * 100).toStringAsFixed(1)}%)',
-                                style: GoogleFonts.plusJakartaSans(
-                                  color: const Color(0xFF8C857C),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: LinearProgressIndicator(
-                              value: yrPct,
-                              minHeight: 8,
-                              backgroundColor: const Color(0xFF131110),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                yrPct > 0.7 
-                                    ? const Color(0xFF6FAE8F) 
-                                    : yrPct > 0.4 
-                                        ? const Color(0xFFFFB14D) 
-                                        : const Color(0xFFFF6A2C),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(ctx).primaryColor,
-              ),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final studentsAsync = ref.watch(unifiedStudentsProvider);
+    final filters = ref.watch(studentFilterProvider);
+    final paginatedAsync = ref.watch(paginatedStudentsProvider);
+    final academicYearsAsync = ref.watch(distinctAcademicYearsProvider);
+    final sectionsAsync = ref.watch(distinctSectionsProvider);
     final activeArchiveAsync = ref.watch(activeYearlyArchiveProvider);
-    final r = Responsive(context);
 
+    final r = Responsive(context);
     final activeArchive = activeArchiveAsync.value;
     final currentFestYear = activeArchive?.festYear ?? 2026;
-    final currentAcadYear = '${currentFestYear - 1}-${currentFestYear.toString().substring(2)}';
-    final prevAcadYear = '${currentFestYear - 2}-${(currentFestYear - 1).toString().substring(2)}';
+    final currentAcadYear =
+        '${currentFestYear - 1}-${currentFestYear.toString().substring(2)}';
+
+    final roleConfig = ref.watch(roleConfigProvider);
+    final bool isSuperAdmin = roleConfig.isSuperAdmin;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -341,308 +96,163 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
             onPressed: () {
               ref.invalidate(studentMasterListProvider);
               ref.invalidate(registrationsListProvider);
-              ref.invalidate(yearlyImportsListProvider);
+              ref.invalidate(distinctAcademicYearsProvider);
+              ref.invalidate(distinctSectionsProvider);
             },
             tooltip: 'Refresh Database',
           ),
         ],
       ),
-      body: studentsAsync.when(
-        data: (students) {
-          // Dynamic Academic Years list based on loaded data
-          final academicYears = ['All'] + 
-              (students.map((s) => s.academicYear).toSet().toList()
-                ..sort((a, b) => b.compareTo(a)));
-
-          // Calculate metrics
-          final totalStudents = students.length;
-          final previousYearCount = students.where((s) => s.dataSource == 'Previous Years').length;
-          
-          final registeredCount = students.where((s) => s.isRegistered).length;
-
-          // Apply search and filters
-          final filteredStudents = students.where((student) {
-            // Search Query
-            final query = _searchQuery.toLowerCase();
-            final matchesQuery = query.isEmpty ||
-                student.name.toLowerCase().contains(query) ||
-                student.usn.toLowerCase().contains(query) ||
-                student.branch.toLowerCase().contains(query) ||
-                student.academicYear.toLowerCase().contains(query);
-
-            if (!matchesQuery) return false;
-
-            // Academic Year Filter
-            if (_selectedAcademicYear != 'All') {
-              final studentAcadYear = student.academicYear.replaceAll('–', '-').replaceAll('—', '-').trim();
-              final selectedAcadYear = _selectedAcademicYear.replaceAll('–', '-').replaceAll('—', '-').trim();
-              if (studentAcadYear != selectedAcadYear) {
-                return false;
-              }
-            }
-
-            // Department Filter
-            if (_selectedDepartment != 'All') {
-              final studentBranchOfficial = AppUtils.mapUsnBranchToOfficial(student.branch);
-              final selectedDeptOfficial = AppUtils.mapUsnBranchToOfficial(_selectedDepartment);
-              if (studentBranchOfficial.toUpperCase() != selectedDeptOfficial.toUpperCase()) {
-                return false;
-              }
-            }
-
-            // Study Year Filter
-            if (_selectedYear != 'All' && student.year.toString() != _selectedYear) {
-              return false;
-            }
-
-            // Status Filter
-            if (_selectedStatus != 'All') {
-              final isReg = _selectedStatus == 'Registered';
-              if (student.isRegistered != isReg) return false;
-            }
-
-            // Source Filter
-            if (_selectedSource != 'All Students' && _selectedSource != 'All') {
-              final isCurrent = _selectedSource == 'Current Year';
-              final studentIsCurrent = student.dataSource == 'Current Year';
-              if (studentIsCurrent != isCurrent) return false;
-            }
-
-            return true;
-          }).toList();
-
-          return Column(
-            children: [
-              // Metrics Header Card Panel
-              _buildMetricsHeader(
-                r: r,
-                total: totalStudents,
-                registered: registeredCount,
-                historical: previousYearCount,
-                allStudents: students,
-              ),
-
-              // Search Bar & Filter Button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        onChanged: (val) {
-                          setState(() {
-                            _searchQuery = val.trim();
-                          });
-                        },
-                        style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: 'Search by USN, Name, Dept, Year...',
-                          prefixIcon: const Icon(Icons.search, color: Color(0xFF8C857C)),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, color: Color(0xFF8C857C)),
-                                  onPressed: () {
-                                    _searchCtrl.clear();
-                                    setState(() {
-                                      _searchQuery = '';
-                                    });
-                                  },
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: const Color(0xFF1D1A18),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Color(0xFF262220), width: 1.2),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(color: Color(0xFF262220), width: 1.2),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 1.2),
-                          ),
-                        ),
+      body: Column(
+        children: [
+          // Search Bar & Filter Toggle Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchCtrl,
+                    onChanged: (val) {
+                      ref
+                          .read(studentFilterProvider.notifier)
+                          .setSearchQuery(val.trim());
+                    },
+                    style: GoogleFonts.plusJakartaSans(
+                        color: const Color(0xFFF3ECE2), fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Search by USN or Name...',
+                      prefixIcon:
+                          const Icon(Icons.search, color: Color(0xFF8C857C)),
+                      suffixIcon: _searchCtrl.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear,
+                                  color: Color(0xFF8C857C)),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                ref
+                                    .read(studentFilterProvider.notifier)
+                                    .setSearchQuery('');
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: const Color(0xFF1D1A18),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(
+                            color: Color(0xFF262220), width: 1.2),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(
+                            color: Color(0xFF262220), width: 1.2),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(
+                            color: Theme.of(context).primaryColor, width: 1.2),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _buildFilterToggleButton(r),
-                  ],
+                  ),
                 ),
-              ),
-
-              // Expandable Filter Panel
-              AnimatedCrossFade(
-                firstChild: const SizedBox.shrink(),
-                secondChild: _buildFilterPanel(r, academicYears, currentAcadYear, prevAcadYear),
-                crossFadeState: _isFilterExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-                duration: const Duration(milliseconds: 250),
-              ),
-
-              // Filtered Results Summary Banner
-              _buildResultsSummaryBanner(r, filteredStudents.length),
-
-              // Students list or empty view
-              Expanded(
-                child: filteredStudents.isEmpty
-                    ? EmptyView(
-                        icon: Icons.person_off_outlined,
-                        title: 'No student records found.',
-                        subtitle: 'Adjust your search query or clear filters to locate records.',
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          ref.invalidate(studentMasterListProvider);
-                          ref.invalidate(registrationsListProvider);
-                          ref.invalidate(yearlyImportsListProvider);
-                        },
-                        child: ListView.builder(
-                          padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 130),
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: filteredStudents.length,
-                          itemBuilder: (context, index) {
-                            final student = filteredStudents[index];
-                            return _buildStudentCard(student, r);
-                          },
-                        ),
-                      ),
-              ),
-            ],
-          );
-        },
-        loading: () => const LoadingView(message: 'Loading student database...'),
-        error: (err, _) => ErrorView(
-          message: 'Error loading students: $err',
-          onRetry: () {
-            ref.invalidate(studentMasterListProvider);
-            ref.invalidate(registrationsListProvider);
-            ref.invalidate(yearlyImportsListProvider);
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMetricsHeader({
-    required Responsive r,
-    required int total,
-    required int registered,
-    required int historical,
-    required List<UnifiedStudent> allStudents,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-      child: Row(
-        children: [
-          _buildMetricCard(
-            title: 'Total Students',
-            value: total.toString(),
-            icon: Icons.people_alt,
-            color: const Color(0xFFFFB14D),
-            r: r,
-          ),
-          const SizedBox(width: 8),
-          _buildMetricCard(
-            title: 'Registered',
-            value: registered.toString(),
-            icon: Icons.check_circle,
-            color: const Color(0xFF6FAE8F),
-            r: r,
-            trailing: const Icon(
-              Icons.analytics_outlined,
-              size: 14,
-              color: Color(0xFF8C857C),
+                const SizedBox(width: 8),
+                _buildFilterToggleButton(filters),
+              ],
             ),
-            onTap: () => _showYearwiseParticipationDialog(context, allStudents),
           ),
-          const SizedBox(width: 8),
-          _buildMetricCard(
-            title: 'Hist. Database',
-            value: historical.toString(),
-            icon: Icons.history_toggle_off,
-            color: const Color(0xFFFF6A2C),
-            r: r,
+
+          // Expandable Filter Panel
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: _buildFilterPanel(r, filters,
+                academicYearsAsync.value ?? [], sectionsAsync.value ?? []),
+            crossFadeState: _isFilterExpanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 250),
+          ),
+
+          // Filter Summary Header
+          _buildResultsSummaryBanner(filters),
+
+          // Main Student List Render (Server-Side Paginated)
+          Expanded(
+            child: paginatedAsync.when(
+              data: (result) {
+                if (result.students.isEmpty) {
+                  return EmptyView(
+                    icon: Icons.person_off_outlined,
+                    title: 'No student records found.',
+                    subtitle:
+                        'Adjust your search query or clear filters to locate records.',
+                  );
+                }
+
+                final studentIds = result.students.map((s) => s.id).toList();
+                final registrationsAsync =
+                    ref.watch(pageRegistrationsProvider(studentIds));
+
+                return Stack(
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(studentMasterListProvider);
+                        ref.invalidate(registrationsListProvider);
+                      },
+                      child: ListView.builder(
+                        padding: EdgeInsets.only(
+                          left: 16,
+                          right: 16,
+                          top: 1,
+                          bottom: r.bottomSpacing(
+                              extra:
+                                  00), // Ensure scrollable content clears the floating pagination bar
+                        ),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: result.students.length,
+                        itemBuilder: (context, index) {
+                          final student = result.students[index];
+                          final isRegistered =
+                              registrationsAsync.value?.contains(student.id) ??
+                                  false;
+                          final isHistorical = student.academicYear != null &&
+                              student.academicYear != currentAcadYear;
+
+                          return _buildStudentCard(student, isRegistered,
+                              isHistorical, isSuperAdmin, r);
+                        },
+                      ),
+                    ),
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: r.bottomSpacing(
+                          extra:
+                              -90), // Floating exactly above the bottom navbar
+                      child: _buildPaginationFooter(filters, result.totalCount),
+                    ),
+                  ],
+                );
+              },
+              loading: () =>
+                  const LoadingView(message: 'Loading student records...'),
+              error: (err, _) => ErrorView(
+                message: 'Error loading students: $err',
+                onRetry: () {
+                  ref.invalidate(paginatedStudentsProvider);
+                },
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMetricCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required Responsive r,
-    VoidCallback? onTap,
-    Widget? trailing,
-  }) {
-    return Expanded(
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1D1A18),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFF262220), width: 1.2),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Icon(icon, color: color.withValues(alpha: 0.8), size: 18),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            value,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: r.sp(16),
-                            ),
-                          ),
-                          if (trailing != null) ...[
-                            const SizedBox(width: 4),
-                            trailing,
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    style: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF8C857C),
-                      fontWeight: FontWeight.bold,
-                      fontSize: r.sp(10),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterToggleButton(Responsive r) {
-    final activeFilters = _getActiveFilterCount();
+  Widget _buildFilterToggleButton(StudentFilterState filters) {
+    final activeFilters = _getActiveFilterCount(filters);
     return InkWell(
       onTap: () {
         setState(() {
@@ -653,10 +263,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: _isFilterExpanded ? Theme.of(context).primaryColor.withValues(alpha: 0.1) : const Color(0xFF1D1A18),
+          color: _isFilterExpanded
+              ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
+              : const Color(0xFF1D1A18),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: _isFilterExpanded ? Theme.of(context).primaryColor : const Color(0xFF262220),
+            color: _isFilterExpanded
+                ? Theme.of(context).primaryColor
+                : const Color(0xFF262220),
             width: 1.2,
           ),
         ),
@@ -668,14 +282,18 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
               children: [
                 Icon(
                   _isFilterExpanded ? Icons.filter_list_off : Icons.filter_list,
-                  color: _isFilterExpanded ? Theme.of(context).primaryColor : const Color(0xFFF3ECE2),
+                  color: _isFilterExpanded
+                      ? Theme.of(context).primaryColor
+                      : const Color(0xFFF3ECE2),
                   size: 18,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   'Filters',
                   style: GoogleFonts.plusJakartaSans(
-                    color: _isFilterExpanded ? Theme.of(context).primaryColor : const Color(0xFFF3ECE2),
+                    color: _isFilterExpanded
+                        ? Theme.of(context).primaryColor
+                        : const Color(0xFFF3ECE2),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -692,10 +310,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                     color: Theme.of(context).primaryColor,
                     shape: BoxShape.circle,
                   ),
-                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  constraints:
+                      const BoxConstraints(minWidth: 16, minHeight: 16),
                   child: Text(
                     activeFilters.toString(),
-                    style: const TextStyle(color: Color(0xFF1A0D05), fontSize: 9, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Color(0xFF1A0D05),
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -707,11 +329,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
   }
 
   Widget _buildFilterPanel(
-    Responsive r, 
+    Responsive r,
+    StudentFilterState filters,
     List<String> academicYears,
-    String currentAcadYear,
-    String prevAcadYear,
+    List<String> sections,
   ) {
+    final List<String> dropdownAcademicYears = ['All'] + academicYears;
+    final List<String> dropdownSections = ['All'] + sections;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
@@ -736,7 +361,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
               ),
               TextButton(
                 onPressed: _resetFilters,
-                child: const Text('Reset All', style: TextStyle(color: Color(0xFFFF5C5C), fontSize: 12)),
+                child: const Text('Reset All',
+                    style: TextStyle(color: Color(0xFFFF5C5C), fontSize: 12)),
               ),
             ],
           ),
@@ -748,22 +374,30 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
               // Academic Year
               Expanded(
                 child: _buildFilterDropdown(
-                  label: 'Acad/Fest Year',
-                  value: _selectedAcademicYear,
-                  items: academicYears,
-                  onChanged: (v) => setState(() => _selectedAcademicYear = v!),
-                  currentAcadYear: currentAcadYear,
-                  prevAcadYear: prevAcadYear,
+                  label: 'Academic Year',
+                  value: filters.academicYear,
+                  items: dropdownAcademicYears,
+                  onChanged: (v) {
+                    if (v != null) {
+                      ref
+                          .read(studentFilterProvider.notifier)
+                          .setAcademicYear(v);
+                    }
+                  },
                 ),
               ),
               const SizedBox(width: 12),
               // Department
               Expanded(
                 child: _buildFilterDropdown(
-                  label: 'Department',
-                  value: _selectedDepartment,
+                  label: 'Department/Branch',
+                  value: filters.department,
                   items: _departments,
-                  onChanged: (v) => setState(() => _selectedDepartment = v!),
+                  onChanged: (v) {
+                    if (v != null) {
+                      ref.read(studentFilterProvider.notifier).setDepartment(v);
+                    }
+                  },
                 ),
               ),
             ],
@@ -776,58 +410,30 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
               Expanded(
                 child: _buildFilterDropdown(
                   label: 'Student Year',
-                  value: _selectedYear,
+                  value: filters.year,
                   items: _years,
-                  onChanged: (v) => setState(() => _selectedYear = v!),
+                  onChanged: (v) {
+                    if (v != null) {
+                      ref.read(studentFilterProvider.notifier).setYear(v);
+                    }
+                  },
                 ),
               ),
               const SizedBox(width: 12),
-              // Registration Status
+              // Section
               Expanded(
                 child: _buildFilterDropdown(
-                  label: 'Status',
-                  value: _selectedStatus,
-                  items: _statuses,
-                  onChanged: (v) => setState(() => _selectedStatus = v!),
+                  label: 'Section',
+                  value: filters.section,
+                  items: dropdownSections,
+                  onChanged: (v) {
+                    if (v != null) {
+                      ref.read(studentFilterProvider.notifier).setSection(v);
+                    }
+                  },
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-
-          // Data Source selector
-          Text(
-            'Data Source',
-            style: GoogleFonts.plusJakartaSans(
-              color: const Color(0xFF8C857C),
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: _sources.map((source) {
-              final isSel = _selectedSource == source;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: ChoiceChip(
-                  label: Text(source, style: TextStyle(fontSize: 11, color: isSel ? const Color(0xFF1A0D05) : const Color(0xFFF3ECE2))),
-                  selected: isSel,
-                  onSelected: (val) {
-                    setState(() {
-                      _selectedSource = source;
-                    });
-                  },
-                  selectedColor: Theme.of(context).primaryColor,
-                  backgroundColor: const Color(0xFF131110),
-                  showCheckmark: false,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: isSel ? Theme.of(context).primaryColor : const Color(0xFF262220)),
-                  ),
-                ),
-              );
-            }).toList(),
           ),
         ],
       ),
@@ -839,8 +445,6 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     required String value,
     required List<String> items,
     required ValueChanged<String?> onChanged,
-    String? currentAcadYear,
-    String? prevAcadYear,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -855,13 +459,15 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
         ),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
-          initialValue: value,
+          initialValue: items.contains(value) ? value : items.first,
           onChanged: onChanged,
           isExpanded: true,
-          style: GoogleFonts.plusJakartaSans(color: const Color(0xFFF3ECE2), fontSize: 13),
+          style: GoogleFonts.plusJakartaSans(
+              color: const Color(0xFFF3ECE2), fontSize: 13),
           dropdownColor: const Color(0xFF1D1A18),
           decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             filled: true,
             fillColor: const Color(0xFF131110),
             border: OutlineInputBorder(
@@ -874,50 +480,27 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
             ),
           ),
           items: items.map((i) {
-            String display = i;
-            if (i == 'All') {
-              display = label == 'Acad/Fest Year' ? 'All Years' : 'All';
-            } else if (label == 'Acad/Fest Year') {
-              if (i == currentAcadYear) {
-                display = 'Current Year ($i)';
-              } else if (i == prevAcadYear) {
-                display = 'Previous Year ($i)';
-              }
-            }
-            return DropdownMenuItem(value: i, child: Text(display));
+            return DropdownMenuItem(
+              value: i,
+              child: Text(i == 'All' ? 'All $label' : i),
+            );
           }).toList(),
         ),
       ],
     );
   }
 
-  Widget _buildResultsSummaryBanner(Responsive r, int count) {
-    // Collect active filter labels
-    final List<String> activeFilters = [];
-    if (_selectedDepartment != 'All') activeFilters.add(_selectedDepartment);
-    
-    // Format academic year display name
-    final activeArchive = ref.read(activeYearlyArchiveProvider).value;
-    final currentFestYear = activeArchive?.festYear ?? 2026;
-    final currentAcadYear = '${currentFestYear - 1}-${currentFestYear.toString().substring(2)}';
-    final prevAcadYear = '${currentFestYear - 2}-${(currentFestYear - 1).toString().substring(2)}';
-    
-    String acadYearDisplay = _selectedAcademicYear;
-    if (_selectedAcademicYear == 'All') {
-      acadYearDisplay = 'All Years';
-    } else if (_selectedAcademicYear == currentAcadYear) {
-      acadYearDisplay = 'Current Year ($currentAcadYear)';
-    } else if (_selectedAcademicYear == prevAcadYear) {
-      acadYearDisplay = 'Previous Year ($prevAcadYear)';
-    }
-    activeFilters.add(acadYearDisplay);
+  Widget _buildResultsSummaryBanner(StudentFilterState filters) {
+    final List<String> activeLabels = [];
+    if (filters.academicYear != 'All') activeLabels.add(filters.academicYear);
+    if (filters.department != 'All') activeLabels.add(filters.department);
+    if (filters.year != 'All') activeLabels.add('Year ${filters.year}');
+    if (filters.section != 'All')
+      activeLabels.add('Section ${filters.section}');
+    if (filters.searchQuery.isNotEmpty)
+      activeLabels.add('Search: "${filters.searchQuery}"');
 
-    if (_selectedStatus != 'All') activeFilters.add(_selectedStatus);
-    if (_selectedYear != 'All') activeFilters.add('Year $_selectedYear');
-    if (_selectedSource != 'All Students' && _selectedSource != 'All') activeFilters.add(_selectedSource);
-    if (_searchQuery.isNotEmpty) activeFilters.add('Search: "$_searchQuery"');
-
-    final showingText = activeFilters.join('  •  ');
+    final showingText = activeLabels.join('  •  ');
 
     return Container(
       width: double.infinity,
@@ -935,14 +518,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Total Students: $count',
+                'Student Database Cohort',
                 style: GoogleFonts.plusJakartaSans(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
               ),
-              if (_getActiveFilterCount() > 0)
+              if (_getActiveFilterCount(filters) > 0)
                 TextButton(
                   onPressed: _resetFilters,
                   style: TextButton.styleFrom(
@@ -952,7 +535,10 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                   ),
                   child: const Text(
                     'Clear Filters',
-                    style: TextStyle(color: Color(0xFFFF5C5C), fontSize: 11, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        color: Color(0xFFFF5C5C),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold),
                   ),
                 ),
             ],
@@ -960,7 +546,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
           if (showingText.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
-              'Showing: $showingText',
+              showingText,
               style: GoogleFonts.plusJakartaSans(
                 color: const Color(0xFF8C857C),
                 fontSize: 11,
@@ -973,7 +559,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     );
   }
 
-  Widget _buildStudentCard(UnifiedStudent s, Responsive r) {
+  Widget _buildStudentCard(Student s, bool isRegistered, bool isHistorical,
+      bool isSuperAdmin, Responsive r) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -992,10 +579,10 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Leading avatar
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                  backgroundColor:
+                      Theme.of(context).primaryColor.withValues(alpha: 0.1),
                   child: Text(
                     s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
                     style: GoogleFonts.plusJakartaSans(
@@ -1006,8 +593,6 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                
-                // Student Details
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1028,13 +613,12 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          // Source badge
-                          _buildSourceBadge(s.dataSource),
+                          _buildSourceBadge(isHistorical),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${s.usn} • ${AppUtils.branches.contains(AppUtils.extractBranchFromUsn(s.usn)) ? AppUtils.extractBranchFromUsn(s.usn) : AppUtils.mapUsnBranchToOfficial(s.branch)} • Year ${s.year}',
+                        '${s.usn} • ${s.branch} • Year ${s.year}',
                         style: GoogleFonts.plusJakartaSans(
                           color: const Color(0xFF8C857C),
                           fontSize: 12,
@@ -1042,7 +626,7 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Academic Year: ${s.academicYear}',
+                        'Academic Year: ${s.academicYear ?? 'N/A'} • Sec ${s.section ?? 'N/A'}',
                         style: GoogleFonts.plusJakartaSans(
                           color: const Color(0xFF8C857C),
                           fontSize: 11,
@@ -1050,26 +634,23 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      
-                      // Status & Contact icons Row
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Status chip
-                          _buildStatusChip(s.isRegistered),
-                          
-                          // Quick Contact Icons
+                          _buildStatusChip(isRegistered),
                           Row(
                             children: [
                               if (s.phone != null && s.phone!.isNotEmpty)
                                 const Padding(
                                   padding: EdgeInsets.only(left: 8.0),
-                                  child: Icon(Icons.phone_outlined, size: 14, color: Color(0xFF8C857C)),
+                                  child: Icon(Icons.phone_outlined,
+                                      size: 14, color: Color(0xFF8C857C)),
                                 ),
                               if (s.email != null && s.email!.isNotEmpty)
                                 const Padding(
                                   padding: EdgeInsets.only(left: 8.0),
-                                  child: Icon(Icons.mail_outline, size: 14, color: Color(0xFF8C857C)),
+                                  child: Icon(Icons.mail_outline,
+                                      size: 14, color: Color(0xFF8C857C)),
                                 ),
                             ],
                           ),
@@ -1079,7 +660,8 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.chevron_right, color: Color(0xFF8C857C), size: 20),
+                const Icon(Icons.chevron_right,
+                    color: Color(0xFF8C857C), size: 20),
               ],
             ),
           ),
@@ -1092,10 +674,14 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isReg ? const Color(0xFF6FAE8F).withValues(alpha: 0.15) : const Color(0xFFFF5C5C).withValues(alpha: 0.15),
+        color: isReg
+            ? const Color(0xFF6FAE8F).withValues(alpha: 0.15)
+            : const Color(0xFFFF5C5C).withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isReg ? const Color(0xFF6FAE8F).withValues(alpha: 0.3) : const Color(0xFFFF5C5C).withValues(alpha: 0.3),
+          color: isReg
+              ? const Color(0xFF6FAE8F).withValues(alpha: 0.3)
+              : const Color(0xFFFF5C5C).withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -1123,24 +709,116 @@ class _StudentListScreenState extends ConsumerState<StudentListScreen> {
     );
   }
 
-  Widget _buildSourceBadge(String source) {
-    final isCurrent = source == 'Current Year';
+  Widget _buildSourceBadge(bool isHistorical) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: isCurrent ? const Color(0xFFFFB14D).withValues(alpha: 0.1) : const Color(0xFF8C857C).withValues(alpha: 0.1),
+        color: !isHistorical
+            ? const Color(0xFFFFB14D).withValues(alpha: 0.1)
+            : const Color(0xFF8C857C).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: isCurrent ? const Color(0xFFFFB14D).withValues(alpha: 0.3) : const Color(0xFF8C857C).withValues(alpha: 0.3),
+          color: !isHistorical
+              ? const Color(0xFFFFB14D).withValues(alpha: 0.3)
+              : const Color(0xFF8C857C).withValues(alpha: 0.3),
         ),
       ),
       child: Text(
-        isCurrent ? 'Current' : 'Historical',
+        !isHistorical ? 'Current' : 'Historical',
         style: GoogleFonts.plusJakartaSans(
-          color: isCurrent ? const Color(0xFFFFB14D) : const Color(0xFF8C857C),
+          color:
+              !isHistorical ? const Color(0xFFFFB14D) : const Color(0xFF8C857C),
           fontSize: 9,
           fontWeight: FontWeight.bold,
         ),
+      ),
+    );
+  }
+
+  Widget _buildPaginationFooter(StudentFilterState filters, int totalCount) {
+    final fromIndex = (filters.page - 1) * filters.pageSize + 1;
+    final toIndex = (fromIndex + filters.pageSize - 1) > totalCount
+        ? totalCount
+        : (fromIndex + filters.pageSize - 1);
+
+    final bool hasPrevious = filters.page > 1;
+    final bool hasNext = toIndex < totalCount;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1A18),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF262220),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            totalCount == 0
+                ? 'Showing 0 students'
+                : 'Showing $fromIndex-$toIndex of $totalCount',
+            style: GoogleFonts.plusJakartaSans(
+                color: const Color(0xFF8C857C),
+                fontSize: 11,
+                fontWeight: FontWeight.bold),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton(
+                onPressed: hasPrevious
+                    ? () => ref
+                        .read(studentFilterProvider.notifier)
+                        .setPage(filters.page - 1)
+                    : null,
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                      color: hasPrevious
+                          ? Theme.of(context).primaryColor
+                          : const Color(0xFF262220)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+                child: Text('Prev',
+                    style: TextStyle(
+                        color: hasPrevious
+                            ? Theme.of(context).primaryColor
+                            : Colors.grey,
+                        fontSize: 11)),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: hasNext
+                    ? () => ref
+                        .read(studentFilterProvider.notifier)
+                        .setPage(filters.page + 1)
+                    : null,
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                      color: hasNext
+                          ? Theme.of(context).primaryColor
+                          : const Color(0xFF262220)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+                child: Text('Next',
+                    style: TextStyle(
+                        color: hasNext
+                            ? Theme.of(context).primaryColor
+                            : Colors.grey,
+                        fontSize: 11)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -8,6 +8,7 @@ import '../../../core/supabase/supabase_tables.dart';
 import '../../../core/models/models.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/config/role_config.dart';
 import '../repositories/auth_repository.dart';
 import 'auth_settings_provider.dart';
 
@@ -54,6 +55,7 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
   StreamSubscription? _authSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _profileSubscription;
   final Ref _ref;
   static const _secureStorage = FlutterSecureStorage();
 
@@ -177,6 +179,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         profile: profile,
         rememberMe: state.rememberMe,
       );
+
+      // Start realtime subscription
+      _subscribeToProfileUpdates(userId);
 
       // Persist if remember me (skip on web - secure storage not available)
       if (state.rememberMe && !kIsWeb) {
@@ -454,7 +459,35 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  void _subscribeToProfileUpdates(String userId) {
+    _profileSubscription?.cancel();
+    
+    debugPrint('[AuthNotifier] Subscribing to realtime updates for profiles table: $userId');
+    _profileSubscription = SupabaseConfig.client
+        .from(SupabaseTables.profiles)
+        .stream(primaryKey: ['id'])
+        .eq('id', userId)
+        .listen((data) {
+          if (data.isNotEmpty) {
+            final updatedProfile = Profile.fromJson(data.first);
+            if (state.profile != updatedProfile) {
+              state = state.copyWith(profile: updatedProfile);
+              // Update secure storage if rememberMe is enabled
+              if (state.rememberMe && !kIsWeb) {
+                _secureStorage.write(key: 'remember_role', value: updatedProfile.role.value);
+              }
+              debugPrint('[AuthNotifier] Realtime profile update: role=${updatedProfile.role.value}, year=${updatedProfile.year}');
+            }
+          }
+        }, onError: (e) {
+          debugPrint('[AuthNotifier] Realtime profiles subscription error: $e');
+        });
+  }
+
   Future<void> signOut() async {
+    _profileSubscription?.cancel();
+    _profileSubscription = null;
+    
     // Only sign out from Supabase if we have a real session
     if (state.profile?.id != demoAdminId) {
       try {
@@ -477,6 +510,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _profileSubscription?.cancel();
     super.dispose();
   }
 }
@@ -505,13 +539,11 @@ final currentUserRoleProvider = Provider<UserRole>((ref) {
   return ref.watch(authStateProvider).profile?.role ?? UserRole.juniorWing;
 });
 
-final canManageEventScheduleProvider = Provider<bool>((ref) {
+final roleConfigProvider = Provider<RoleConfig>((ref) {
   final profile = ref.watch(currentProfileProvider);
-  if (profile == null) return false;
-  final role = profile.role;
-  return role.isSuperAdmin || 
-         role == UserRole.eventDirector ||
-         role == UserRole.eventManager ||
-         role == UserRole.eventManagerCoEditorial ||
-         profile.year == 4;
+  return RoleConfig(profile);
+});
+
+final canManageEventScheduleProvider = Provider<bool>((ref) {
+  return ref.watch(roleConfigProvider).canManageEventSchedule;
 });

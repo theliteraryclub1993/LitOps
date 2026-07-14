@@ -14,7 +14,7 @@ import '../../features/events/screens/create_event_screen.dart';
 import '../../features/students/screens/student_list_screen.dart';
 import '../../features/students/screens/student_detail_screen.dart';
 import '../../features/students/screens/add_student_screen.dart';
-import '../../features/students/screens/import_students_screen.dart';
+
 import '../../features/students/screens/database_management_screen.dart';
 import '../../features/registration/screens/registration_screen.dart';
 import '../../features/attendance/screens/attendance_screen.dart';
@@ -52,6 +52,7 @@ import '../../features/admin/screens/rulebook_management_screen.dart';
 import '../../features/admin/screens/auth_control_screen.dart';
 import '../../features/dashboard/screens/rulebook_viewer_screen.dart';
 import '../../core/enums/enums.dart';
+import '../../core/config/role_config.dart';
 
 bool debugBypassIncompleteCheck = false;
 
@@ -122,33 +123,31 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
       if (isLogin) return '/dashboard';
 
-      // Enterprise Role Guards
-      final userRole = currentAuth.profile?.role ?? UserRole.juniorWing;
-      final isFourthYear = currentAuth.profile != null &&
-          (currentAuth.profile!.year == 4 || currentAuth.profile!.academicYear == 4);
+      // Enterprise Role Guards using centralized RoleConfig
+      final roleConfig = ref.read(roleConfigProvider);
       final isGoingToAdmin = location.startsWith('/admin');
       final isGoingToScheduling = location.startsWith('/scheduling');
       final isGoingToCreateEvent = location == '/events/create';
       final isGoingToAppeals = location.startsWith('/appeals');
       final isGoingToScoreEntry = location.startsWith('/results/score');
 
-      if (isGoingToAdmin && !userRole.isSuperAdmin) {
+      if (isGoingToAdmin && !roleConfig.isSuperAdmin) {
         return '/dashboard';
       }
 
-      if (isGoingToAppeals && !userRole.canViewAppeals) {
+      if (isGoingToAppeals && !roleConfig.canViewAppeals) {
         return '/dashboard';
       }
 
-      if (isGoingToScheduling && !userRole.canManageEventSchedule && currentAuth.profile?.year != 4) {
+      if (isGoingToScheduling && !roleConfig.canManageEventSchedule) {
         return '/dashboard';
       }
 
-      if (isGoingToCreateEvent && !userRole.canCreateEvents) {
+      if (isGoingToCreateEvent && !roleConfig.canCreateEvents) {
         return '/dashboard';
       }
 
-      if (isGoingToScoreEntry && !userRole.canManageResults) {
+      if (isGoingToScoreEntry && !roleConfig.canManageResults) {
         return '/dashboard';
       }
 
@@ -232,7 +231,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               ),
               GoRoute(
                 path: 'import',
-                builder: (context, state) => const ImportStudentsScreen(),
+                builder: (context, state) => const HistoricalImportScreen(),
               ),
               GoRoute(
                 path: 'manage',

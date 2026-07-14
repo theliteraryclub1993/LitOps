@@ -231,8 +231,9 @@ class AppUtils {
       if (position == null) continue;
 
       int pts = 0;
-      if (position == 'winner') pts = 10;
-      else if (position == 'runner_up') pts = 7;
+      if (position == 'winner') {
+        pts = 10;
+      } else if (position == 'runner_up') pts = 7;
       else if (position == 'second_runner_up') pts = 5;
       else if (position == 'participation') pts = 1;
 

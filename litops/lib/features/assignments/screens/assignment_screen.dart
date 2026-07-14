@@ -8,6 +8,7 @@ import '../../../core/supabase/supabase_config.dart';
 import '../../../core/supabase/supabase_tables.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/config/role_config.dart';
 
 class AssignmentScreen extends ConsumerStatefulWidget {
   final Event? initialEvent;
@@ -66,9 +67,8 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final role = ref.watch(currentUserRoleProvider);
-    final profile = ref.watch(currentProfileProvider);
-    final isAuthorized = role.canAssignMembers || profile?.year == 4;
+    final roleConfig = ref.watch(roleConfigProvider);
+    final isAuthorized = roleConfig.canAssignMembers;
 
     final filteredUsers = _users.where((u) {
       final query = _searchQuery.toLowerCase();

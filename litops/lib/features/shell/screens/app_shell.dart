@@ -6,8 +6,7 @@ import '../../auth/providers/auth_provider.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../core/enums/enums.dart';
 import '../../../core/utils/responsive.dart';
-
-
+import '../../../core/config/role_config.dart';
 
 class AppShell extends ConsumerWidget {
   final Widget child;
@@ -18,20 +17,8 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(currentUserRoleProvider);
-    final profile = ref.watch(currentProfileProvider);
-    final isFourthYear = profile != null && (profile.year == 4 || profile.academicYear == 4);
-    final isJunior = profile != null &&
-        !isFourthYear &&
-        profile.role != UserRole.superAdmin && (
-        profile.role == UserRole.juniorWing ||
-        profile.year == 1 ||
-        profile.year == 2 ||
-        profile.academicYear == 1 ||
-        profile.academicYear == 2
-    );
+    final roleConfig = ref.watch(roleConfigProvider);
     final currentLocation = GoRouterState.of(context).matchedLocation;
-    final isDashboard = currentLocation == '/dashboard';
     
     // Only show navbar if current location is EXACTLY one of the top-level routes
     final bool shouldShowNavbar = routesWithNavbar.contains(currentLocation);
@@ -42,47 +29,7 @@ class AppShell extends ConsumerWidget {
     print("routesWithNavbar = $routesWithNavbar");
     print("=== End AppShell Debug ===");
  
-    final navItems = [
-      NavBarItem(
-        icon: Icons.home_outlined,
-        selectedIcon: Icons.home,
-        label: 'Home',
-        route: '/dashboard',
-      ),
-      NavBarItem(
-        icon: Icons.grid_view_outlined,
-        selectedIcon: Icons.grid_view,
-        label: 'Events',
-        route: '/events',
-      ),
-      if (role.isAdmin && (!isFourthYear || role.isSuperAdmin))
-        NavBarItem(
-          icon: Icons.admin_panel_settings_outlined,
-          selectedIcon: Icons.admin_panel_settings,
-          label: 'Admin',
-          route: '/admin',
-        )
-      else if (isJunior)
-        NavBarItem(
-          icon: Icons.people_outline,
-          selectedIcon: Icons.people,
-          label: 'Members',
-          route: '/leaderboard',
-        )
-      else
-        NavBarItem(
-          icon: Icons.emoji_events_outlined,
-          selectedIcon: Icons.emoji_events,
-          label: 'Rank',
-          route: '/leaderboard',
-        ),
-      NavBarItem(
-        icon: Icons.person_outline,
-        selectedIcon: Icons.person,
-        label: 'Profile',
-        route: '/profile',
-      ),
-    ];
+    final navItems = roleConfig.getNavItems();
 
 
 
@@ -198,18 +145,4 @@ class ClayBottomNavBar extends StatelessWidget {
       ),
     );
   }
-}
-
-class NavBarItem {
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
-  final String route;
-
-  NavBarItem({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
-    required this.route,
-  });
 }

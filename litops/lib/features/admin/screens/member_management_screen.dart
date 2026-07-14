@@ -629,7 +629,7 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
 
                     // Year Dropdown
                     DropdownButtonFormField<int>(
-                      value: selectedYear,
+                      initialValue: selectedYear,
                       dropdownColor: const Color(0xFF1D1A18),
                       style: const TextStyle(color: Color(0xFFF3ECE2)),
                       decoration: const InputDecoration(
@@ -652,7 +652,7 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
 
                     // Role Dropdown
                     DropdownButtonFormField<String>(
-                      value: selectedRole?.value,
+                      initialValue: selectedRole?.value,
                       dropdownColor: const Color(0xFF1D1A18),
                       style: const TextStyle(color: Color(0xFFF3ECE2)),
                       decoration: const InputDecoration(
@@ -684,7 +684,7 @@ class _MemberManagementScreenState extends ConsumerState<MemberManagementScreen>
                         style: TextStyle(color: selectedIsActive == true ? Colors.green : Colors.red, fontSize: 12),
                       ),
                       value: selectedIsActive ?? true,
-                      activeColor: LitColors.ember,
+                      activeThumbColor: LitColors.ember,
                       onChanged: (val) {
                         setDialogState(() {
                           selectedIsActive = val;

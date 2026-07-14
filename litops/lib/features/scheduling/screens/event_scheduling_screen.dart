@@ -10,6 +10,7 @@ import '../../admin/screens/points_management_screen.dart'; // for adminEventsPr
 import '../providers/scheduling_providers.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/utils/responsive.dart';
+import '../../../core/config/role_config.dart';
 
 class EventSchedulingScreen extends ConsumerStatefulWidget {
   const EventSchedulingScreen({super.key});
@@ -319,9 +320,8 @@ class _EventSchedulingScreenState extends ConsumerState<EventSchedulingScreen>
   // TAB 2: STAFF ASSIGNMENTS
   // ============================================================================
   Widget _buildAssignmentsTab(List<Event> events) {
-    final role = ref.watch(currentUserRoleProvider);
-    final profile = ref.watch(currentProfileProvider);
-    final isAuthorized = role.canAssignMembers || profile?.year == 4;
+    final roleConfig = ref.watch(roleConfigProvider);
+    final isAuthorized = roleConfig.canAssignMembers;
 
     final assignmentsAsync =
         ref.watch(eventAssignmentsProvider(_focusedEvent!.id));
